@@ -1,0 +1,15 @@
+{
+  "target_market_country": "",
+  "preferred_currency": "EUR",
+  "default_purchase_condition": "EITHER",
+  "risk_tolerance": "MEDIUM",
+  "warranty_importance": 50,
+  "resale_importance": 50,
+  "weight_sensitivity": 50,
+  "brand_preferences": [],
+  "excluded_brands": [],
+  "preferred_sources": [],
+  "excluded_sources": [],
+  "notification_threshold": 80,
+  "notes": ""
+}

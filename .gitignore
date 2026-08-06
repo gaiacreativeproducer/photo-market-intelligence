@@ -218,6 +218,9 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Private runtime user memory (templates live in data/templates/)
+data/user/
+
 # Ruff stuff:
 .ruff_cache/
 

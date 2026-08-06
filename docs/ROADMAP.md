@@ -80,6 +80,9 @@ Task:
 - [x] Sprint 8: confronto deterministico dei percorsi nuovo e usato
 - [x] Sprint 8: valore protetto, rischio, rivendita e costo di possesso
 - [x] Sprint 8: break-even numerico e raccomandazioni spiegabili
+- [x] Sprint 9: memoria utente privata con inventario e storico decisioni
+- [x] Sprint 9: wishlist contestuale deterministica e copertura attrezzatura
+- [x] Sprint 9: template versionati, storage atomico e validazione privacy
 
 ---
 
