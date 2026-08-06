@@ -68,6 +68,9 @@ Task:
 - [x] Sprint 4: fatti strutturati per condizioni, difetti, garanzia e accessori
 - [x] Sprint 4: motore decisionale esplicito e spiegabile
 - [x] Sprint 4: confronto deterministico nuovo-usato e confidence score
+- [x] Sprint 5: analisi deterministica bilingue delle descrizioni
+- [x] Sprint 5: estrazione di condizioni, accessori, documenti e difetti
+- [x] Sprint 5: integrazione immutabile dei fatti negli annunci normalizzati
 
 ---
 
