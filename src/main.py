@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import sys
+from dataclasses import replace
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -15,6 +17,8 @@ from catalog import (
     load_products,
 )
 from connectors import ConnectorManager, MockConnector, SearchQuery
+from decision import DecisionEngine, MarketStatistics, NewAlternative
+from decision.explanations import format_report_summary
 
 
 ROW_COUNT_FILES = {
@@ -72,6 +76,35 @@ def run(
         print(f"Connector health: {connector_result.health.status.value}")
         print(f"Connector listings: {len(connector_result.listings)}")
         print(f"Connector incidents: {connector_result.incident_count}")
+    products_by_id = {product.id: product for product in products}
+    example_ids = {
+        "sony-alpha-a7-iv", "sigma-24-70mm-f2-8-dg-dn-ii-art"
+    }
+    if example_ids.issubset(products_by_id):
+        decision_engine = DecisionEngine(as_of=date(2026, 4, 1))
+        clean_listing = MockConnector(scenario="clean_with_warranty").search(
+            SearchQuery("Sony A7 IV")
+        )[0]
+        clean_listing = replace(clean_listing, price=1200.0, shutter_count=20_000)
+        clean_report = decision_engine.evaluate(
+            products_by_id["sony-alpha-a7-iv"],
+            clean_listing,
+            MarketStatistics(1400.0, 1150.0, 1595.0, 20, -2.0, 90, "EUR"),
+            NewAlternative(1595.0, "EUR", 24, 30, 95.0, "Authorized retailer"),
+        )
+        cracked_listing = MockConnector(scenario="cracked_lens").search(
+            SearchQuery("Sigma 24-70 DG DN II")
+        )[0]
+        cracked_report = decision_engine.evaluate(
+            products_by_id["sigma-24-70mm-f2-8-dg-dn-ii-art"],
+            cracked_listing,
+            MarketStatistics(1050.0, 900.0, 1250.0, 12, -1.0, 90, "EUR"),
+            NewAlternative(1250.0, "EUR", 24, 30, 95.0, "Authorized retailer"),
+        )
+        for line in format_report_summary("clean used versus new", clean_report):
+            print(line)
+        for line in format_report_summary("low price with cracked lens", cracked_report):
+            print(line)
     print("System ready.")
     return 0
 

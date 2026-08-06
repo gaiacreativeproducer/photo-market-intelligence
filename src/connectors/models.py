@@ -15,6 +15,24 @@ class ConnectorStatus(str, Enum):
     DISABLED = "DISABLED"
 
 
+DEFECT_CATEGORIES = {
+    "cosmetic_damage", "optical_damage", "mechanical_damage",
+    "electronic_damage", "fungus", "haze", "scratches", "cracks", "dust",
+    "missing_parts", "water_damage", "unknown",
+}
+DEFECT_SEVERITIES = {"minor", "moderate", "major", "critical", "unknown"}
+
+
+@dataclass(frozen=True)
+class ListingDefect:
+    category: str
+    description: str
+    severity: str
+    affected_component: str
+    source_text: str
+    confidence: float
+
+
 @dataclass(frozen=True)
 class SearchQuery:
     text: str
@@ -36,6 +54,14 @@ class Listing:
     detected_at: datetime
     raw_data: Dict[str, Any]
     connector_name: str
+    shutter_count: Optional[int] = None
+    warranty_until: Optional[str] = None
+    invoice_available: Optional[bool] = None
+    original_box_available: Optional[bool] = None
+    accessories: List[str] = field(default_factory=list)
+    defects: List[ListingDefect] = field(default_factory=list)
+    seller_claims: List[str] = field(default_factory=list)
+    missing_information: List[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

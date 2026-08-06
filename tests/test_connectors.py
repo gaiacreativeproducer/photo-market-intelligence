@@ -47,6 +47,21 @@ class ConnectorTests(unittest.TestCase):
         self.assertEqual(connector.search_attempts, 1)
         self.assertEqual(delays, [])
 
+    def test_structured_mock_listing_scenarios(self) -> None:
+        query = SearchQuery("Sony A7 IV")
+        clean = MockConnector(scenario="clean_with_warranty").search(query)[0]
+        cracked = MockConnector(scenario="cracked_lens").search(
+            SearchQuery("Sigma 24-70 DG DN II")
+        )[0]
+        high_shutter = MockConnector(scenario="high_shutter_count").search(query)[0]
+        incomplete = MockConnector(scenario="incomplete_condition").search(query)[0]
+
+        self.assertTrue(clean.warranty_until)
+        self.assertGreaterEqual(len(clean.accessories), 3)
+        self.assertEqual(cracked.defects[0].category, "cracks")
+        self.assertEqual(high_shutter.shutter_count, 160_000)
+        self.assertIn("condition details", incomplete.missing_information)
+
     def test_empty_response_is_healthy_without_previous_results(self) -> None:
         connector = MockConnector(scenario="empty")
         result, _, _ = self.run_manager([connector])

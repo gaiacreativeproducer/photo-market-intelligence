@@ -34,22 +34,25 @@ class MainTests(unittest.TestCase):
                 )
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(
-            output.getvalue(),
-            "Photo Market Intelligence\n"
-            "Status: OK\n"
-            "Products: 34\n"
-            "Product aliases: 54\n"
-            "Manufacturers: 13\n"
-            "Mounts: 10\n"
-            "Wishlist: 0\n"
-            "Listings: 0\n"
-            "Connector: mock-marketplace\n"
-            "Connector health: HEALTHY\n"
-            "Connector listings: 1\n"
-            "Connector incidents: 0\n"
+        application_output = output.getvalue()
+        for expected in (
+            "Photo Market Intelligence\n",
+            "Status: OK\n",
+            "Products: 34\n",
+            "Product aliases: 54\n",
+            "Manufacturers: 13\n",
+            "Mounts: 10\n",
+            "Wishlist: 0\n",
+            "Listings: 0\n",
+            "Connector: mock-marketplace\n",
+            "Connector health: HEALTHY\n",
+            "Connector listings: 1\n",
+            "Connector incidents: 0\n",
+            "Decision example: clean used versus new\n",
+            "Decision example: low price with cracked lens\n",
             "System ready.\n",
-        )
+        ):
+            self.assertIn(expected, application_output)
 
     def test_counts_data_rows(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
