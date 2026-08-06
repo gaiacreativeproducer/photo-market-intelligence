@@ -74,7 +74,9 @@ class RadarPipeline:
             self.store.save_runs(existing_runs + [run])
 
         listings = self.store.load_listings()
-        health_by_id = {item.source_id: item for item in self.store.load_health()}
+        existing_listing_ids = {item.listing_id for item in listings}
+        previous_health = self.store.load_health()
+        health_by_id = {item.source_id: item for item in previous_health}
         current_errors: List[RadarError] = []
         raw_count = normalized_count = new_count = ignored_count = successes = failures = 0
         product_categories = {item.id: item.category for item in self.products}
@@ -155,6 +157,19 @@ class RadarPipeline:
             self.store.save_errors(errors + current_errors)
             self.store.save_health(list(health_by_id.values()))
             self.store.save_runs(stored_runs)
+            try:
+                from notifications import NotificationEngine, NotificationStore
+                fresh = [item for item in listings if item.listing_id not in existing_listing_ids]
+                NotificationEngine(NotificationStore(self.store.directory)).evaluate_radar(
+                    final, fresh, watches, previous_health,
+                    list(health_by_id.values()), dry_run=False,
+                )
+            except Exception as exc:
+                notification_error = self._error(
+                    run_id, "", "notification", type(exc).__name__,
+                    "notification evaluation failed", now, True,
+                )
+                self.store.save_errors(self.store.load_errors() + [notification_error])
         return PipelineResult(final, listings, current_errors, list(health_by_id.values()))
 
     def _connector(self, source):

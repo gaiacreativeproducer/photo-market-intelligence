@@ -81,6 +81,7 @@ class MainTests(unittest.TestCase):
             "Recent decision count: 0\n",
             "Dashboard:\npython3 -m src.dashboard.server\n",
             "Radar once:\npython3 -m src.radar.scheduler --once\n",
+            "MVP modules: ready\n",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)

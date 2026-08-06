@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import asdict
+from datetime import datetime, timezone
 from http import HTTPStatus
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -11,6 +13,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 
 from .serializers import detail_json, product_json
 from .view_models import DashboardData, ProductView
+from assistant.models import AssistantRequest
 
 
 STATIC_ROUTES = {
@@ -18,15 +21,19 @@ STATIC_ROUTES = {
     "/product.html": "product.html", "/compare.html": "compare.html",
     "/app.js": "app.js", "/product.js": "product.js",
     "/compare.js": "compare.js", "/styles.css": "styles.css",
+    "/assistant.css": "assistant.css",
 }
 SORTS = {"relevance", "brand", "newest", "used_price", "new_price", "confidence", "wishlist_priority"}
 PRIORITY = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, None: 4}
 
 
 class DashboardRouter:
-    def __init__(self, data: DashboardData, web_directory: Path) -> None:
+    def __init__(self, data: DashboardData, web_directory: Path,
+                 notification_store=None, assistant_provider=None) -> None:
         self.data = data
         self.web_directory = web_directory
+        self.notification_store = notification_store
+        self.assistant_provider = assistant_provider
 
     def dispatch(self, raw_path: str) -> Tuple[int, str, bytes]:
         parsed = urlsplit(raw_path)
@@ -42,6 +49,10 @@ class DashboardRouter:
         if path == "/api/status":
             return self.json({"status": "OK", "service": "Photo Market Intelligence Dashboard", "mode": self.data.mode, "read_only": True, "product_count": len(self.data.products)})
         if path == "/api/context": return self.json(self.data.context)
+        if path == "/api/notifications":
+            return self.notifications()
+        if path == "/api/assistant/capabilities":
+            return self.json(self.assistant_provider.capabilities())
         if path in {"/api/products", "/api/search"}:
             return self.products(parse_qs(parsed.query, keep_blank_values=True), search_endpoint=path.endswith("search"))
         if path == "/api/compare": return self.compare(parse_qs(parsed.query, keep_blank_values=True))
@@ -54,6 +65,43 @@ class DashboardRouter:
             if detail is None: return self.error(HTTPStatus.NOT_FOUND, "not_found", "Product not found.")
             return self.json(detail_json(detail))
         return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+
+    def dispatch_post(self, raw_path: str, value: Dict[str, object]):
+        path = unquote(urlsplit(raw_path).path)
+        match = re.fullmatch(r"/api/notifications/([a-f0-9]{32})/(read|dismiss)", path)
+        if match:
+            if value:
+                return self.error(400, "invalid_body", "Notification mutation body must be empty.")
+            try: item = self.notification_store.update_state(match.group(1), match.group(2) == "dismiss")
+            except KeyError: return self.error(404, "not_found", "Notification not found.")
+            return self.json({"notification_id": item.notification_id, "read": item.read, "dismissed": item.dismissed})
+        if path == "/api/assistant/query":
+            expected = {"message", "product_id", "comparison_product_ids", "listing_id", "page_context"}
+            if set(value) != expected:
+                return self.error(400, "invalid_body", "Assistant request has invalid keys.")
+            if not isinstance(value["message"], str) or not 1 <= len(value["message"]) <= 1000:
+                return self.error(400, "invalid_body", "message is required and must not exceed 1000 characters.")
+            comparisons = value["comparison_product_ids"]
+            if not isinstance(comparisons, list) or len(comparisons) > 4 or any(not isinstance(x, str) for x in comparisons):
+                return self.error(400, "invalid_body", "comparison_product_ids is invalid.")
+            for key in ("product_id", "listing_id"):
+                if value[key] is not None and not isinstance(value[key], str):
+                    return self.error(400, "invalid_body", f"{key} is invalid.")
+            if not isinstance(value["page_context"], str):
+                return self.error(400, "invalid_body", "page_context is invalid.")
+            request = AssistantRequest(value["message"], value["product_id"], comparisons,
+                value["listing_id"], value["page_context"], datetime.now(timezone.utc))
+            return self.json(_assistant_json(self.assistant_provider.query(request)))
+        return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+
+    def notifications(self):
+        values = self.notification_store.load() if self.notification_store else []
+        visible = [item for item in values if not item.dismissed]
+        return self.json({"notifications": [_notification_json(item) for item in visible],
+                          "count": len(visible),
+                          "unread_count": sum(not item.read for item in visible),
+                          "read_count": sum(item.read for item in values),
+                          "dismissed_count": sum(item.dismissed for item in values)})
 
     def products(self, query: Dict[str, List[str]], search_endpoint: bool = False):
         allowed = {"q", "category", "brand", "mount", "owned", "wishlist", "market", "confidence_min", "sort", "order"}
@@ -165,3 +213,19 @@ def _sort(ranked, sort, order, has_query):
     available = [pair for pair in ranked if key(pair[0]) is not None]
     unavailable = [pair for pair in ranked if key(pair[0]) is None]
     return sorted(available, key=lambda pair: (key(pair[0]), pair[0].id), reverse=reverse) + sorted(unavailable, key=lambda pair: pair[0].id)
+
+
+def _notification_json(item):
+    return {"notification_id": item.notification_id, "notification_type": item.notification_type.value,
+            "severity": item.severity.value, "title": item.title, "message": item.message,
+            "product_id": item.product_id, "listing_id": item.listing_id,
+            "source_id": item.source_id, "created_at": item.created_at.isoformat(),
+            "read": item.read, "dismissed": item.dismissed, "action_url": item.action_url,
+            "evidence": item.evidence, "delivery_status": item.delivery_status.value}
+
+
+def _assistant_json(item):
+    return {"answer":item.answer,"intent":item.intent.value,"confidence":item.confidence,
+            "facts":[asdict(fact) for fact in item.facts],"warnings":item.warnings,
+            "suggested_actions":item.suggested_actions,"related_product_ids":item.related_product_ids,
+            "source_sections":item.source_sections}
