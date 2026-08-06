@@ -10,6 +10,7 @@ from urllib.request import Request,urlopen
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/"src"))
 from catalog import load_product_aliases,load_products
 from dashboard.server import create_server
+from dashboard.conclusions import build_overall_conclusion,market_sample_label
 from radar.manual_entry import ManualEntryError,ManualListingService,validate_manual_payload
 from radar.persistence import RadarStore
 from radar.pipeline import RadarPipeline
@@ -76,10 +77,85 @@ class ManualApiTests(unittest.TestCase):
     def test_valid_subito_and_ebay_immediately_refresh(self):
         status,_,result=self.request("/api/listings/manual","POST",payload(),{"Content-Type":"application/json"})
         self.assertEqual(status,201);self.assertEqual(result["product_id"],"sony-alpha-a7-iv");self.assertEqual(result["extracted"]["shutter_count"],60000)
-        live=self.request("/api/listings/live?product_id=sony-alpha-a7-iv&segment=USED&active=true")[2];self.assertEqual(live["count"],1)
+        live=self.request("/api/listings/live?product_id=sony-alpha-a7-iv&segment=USED&active=true")[2]
+        self.assertTrue(any(item["listing_id"]==result["listing_id"] for item in live["items"]))
         detail=self.request("/api/products/sony-alpha-a7-iv")[2];self.assertTrue(any(item.get("listing_id")==result["listing_id"] for item in detail["listings"]))
         ebay=payload(url="https://www.ebay.it/itm/1",source_name="eBay",title="Sony A7 IV",price="1300.25")
         self.assertEqual(self.request("/api/listings/manual","POST",ebay,{"Content-Type":"application/json"})[0],201)
+
+    def test_a7_iv_listing_to_decision_flow(self):
+        new=payload(url="https://example.test/a7iv-new",source_name="Negozio",
+            title="Sony A7 IV nuova",description="Remaining 24 months warranty. Fattura presente.",
+            price=1595,segment="NEW")
+        used=payload(url="https://example.test/a7iv-used",source_name="Privato",
+            title="Sony A7 IV usata 60000 scatti",description="No warranty. Nessun difetto.",
+            price=1200,segment="USED")
+        new_result=self.request("/api/listings/manual","POST",new,{"Content-Type":"application/json"})[2]
+        used_result=self.request("/api/listings/manual","POST",used,{"Content-Type":"application/json"})[2]
+        self.assertEqual(new_result["product_id"],"sony-alpha-a7-iv")
+        self.assertEqual(used_result["product_id"],"sony-alpha-a7-iv")
+        live=self.request("/api/listings/live?product_id=sony-alpha-a7-iv&active=true")[2]["items"]
+        pair=[item for item in live if item["listing_id"] in {new_result["listing_id"],used_result["listing_id"]}]
+        self.assertEqual(len(pair),2)
+        self.assertTrue(all(item["recognition_confidence"]==100 and not item["needs_review"] for item in pair))
+        self.assertTrue(all(item["product_name"]=="Sony Alpha A7 IV" and item["title"] for item in pair))
+        detail=self.request("/api/products/sony-alpha-a7-iv")[2]
+        self.assertEqual(detail["product"]["new_median"],1595)
+        self.assertEqual(detail["product"]["used_median"],1200)
+        self.assertIn("EUR:NEW",detail["listing_market"]);self.assertIn("EUR:USED",detail["listing_market"])
+        self.assertIn(new_result["listing_id"],detail["listing_decisions"])
+        self.assertIn(used_result["listing_id"],detail["listing_decisions"])
+        key=f'{new_result["listing_id"]}:{used_result["listing_id"]}'
+        comparison=detail["ownership_comparisons"][key]
+        self.assertEqual(comparison["nominal_saving"],395)
+        self.assertAlmostEqual(comparison["saving_percentage"],24.8,places=1)
+        self.assertTrue(comparison["recommendation"]);self.assertTrue(comparison["reasons"])
+        self.assertTrue(used_result["listing_analysis"]["reasons"])
+        self.assertTrue(used_result["comparable_offer_available"])
+        overall=detail["overall_conclusion"]
+        self.assertEqual(detail["listing_decisions"][used_result["listing_id"]]["recommendation"],"BUY_NEW")
+        self.assertEqual(comparison["recommendation"],"INSUFFICIENT_DATA")
+        self.assertEqual(overall["result"],"INSUFFICIENT_DATA")
+        self.assertEqual(overall["title"],"Confronto non ancora conclusivo")
+        self.assertLessEqual(overall["confidence"],40)
+        self.assertIn("Singola offerta osservata",detail["listing_market"]["EUR:USED"]["sample_label"])
+        self.assertEqual(detail["listing_market"]["EUR:USED"]["price_label"],"Prezzo osservato")
+        self.assertIn("Confidenza del confronto proprietà",overall["confidence_basis"])
+        self.assertIn("Raccogliere dati storici di mercato",overall["suggested_checks"])
+        self.assertEqual(pair[0]["recognition_confidence"],100)
+        self.assertIn("description_confidence",pair[0])
+        self.assertIn("market_confidence",detail["listing_market"]["EUR:USED"])
+        self.assertIn("confidence",detail["listing_decisions"][used_result["listing_id"]])
+        self.assertIn("confidence",comparison)
+
+    def test_honest_comparison_boundaries_and_major_defect(self):
+        single=payload(url="https://example.test/z6-single",title="Nikon Z6 III usata",price=1400)
+        result=self.request("/api/listings/manual","POST",single,{"Content-Type":"application/json"})[2]
+        self.assertFalse(result["comparable_offer_available"])
+        self.assertEqual(result["listing_analysis"]["new_vs_used_recommendation"],"INSUFFICIENT_DATA")
+        eur=payload(url="https://example.test/a7iii-used",title="Sony A7 III usata",price=900,currency="EUR")
+        usd=payload(url="https://example.test/a7iii-new",title="Sony A7 III nuova",price=1200,currency="USD",segment="NEW")
+        self.request("/api/listings/manual","POST",eur,{"Content-Type":"application/json"})
+        self.request("/api/listings/manual","POST",usd,{"Content-Type":"application/json"})
+        detail=self.request("/api/products/sony-alpha-a7-iii")[2]
+        self.assertEqual(detail["ownership_comparisons"],{})
+        clean_new=payload(url="https://example.test/a7v-new",title="Sony A7 V nuova",
+            description="Remaining 24 months warranty.",price=2200,segment="NEW")
+        self.request("/api/listings/manual","POST",clean_new,{"Content-Type":"application/json"})
+        damaged=payload(url="https://example.test/a7v-damaged",title="Sony A7 V",
+            description="Autofocus non funziona.",price=1600)
+        damaged_result=self.request("/api/listings/manual","POST",damaged,{"Content-Type":"application/json"})[2]
+        self.assertEqual(damaged_result["ownership_comparison"]["recommendation"],"MANUAL_REVIEW")
+        self.assertEqual(damaged_result["overall_conclusion"]["result"],"MANUAL_REVIEW")
+
+    def test_conclusion_precedence_and_sample_labels(self):
+        valid=build_overall_conclusion({}, {"recommendation":"PREFER_USED","confidence":82}, {}, [])
+        self.assertEqual(valid["result"],"PREFER_USED")
+        manual=build_overall_conclusion({}, {"recommendation":"MANUAL_REVIEW","confidence":75}, {}, [])
+        self.assertEqual(manual["result"],"MANUAL_REVIEW")
+        self.assertEqual([market_sample_label(value) for value in (0,1,2,5,10)],
+            ["Nessuna osservazione di mercato affidabile","Singola offerta osservata — non è una stima di mercato affidabile",
+             "Campione di mercato molto limitato","Campione di mercato limitato","Campione di mercato"])
     def test_review_listing_and_filters(self):
         review=payload(url="https://example.test/unknown",source_name="Other",title="Camera usata",description="Buone condizioni")
         result=self.request("/api/listings/manual","POST",review,{"Content-Type":"application/json"})[2];self.assertEqual(result["status"],"needs_review")
@@ -105,6 +181,7 @@ class ManualApiTests(unittest.TestCase):
         self.assertIn("Non ci sono ancora dati di mercato reali",html)
     def test_python_39(self):
         ast.parse((ROOT/"src/radar/manual_entry.py").read_text(),feature_version=(3,9))
+        ast.parse((ROOT/"src/dashboard/listing_analysis.py").read_text(),feature_version=(3,9))
 
 
 class DemoIsolationTests(unittest.TestCase):

@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from typing import Dict
 
 from connectors.manual_url import normalize_url
+from connectors.models import DEFECT_CATEGORIES, DEFECT_SEVERITIES
 from notifications import NotificationEngine, NotificationStore
 
 from .models import RadarRun, RadarSource, RunStatus, SourceType
@@ -33,7 +34,10 @@ class ManualListingService:
         categories={item.id:item.category for item in self.pipeline.products}
         candidate,_relevant,recognition=self.pipeline._to_listing(
             run_id,source,value,"manual-ui",True,self.watches,now,categories)
-        confident=bool(recognition.product_id and recognition.confidence>=70 and not recognition.ambiguous)
+        confident=bool(
+            recognition.product_id and recognition.confidence>=70
+            and not recognition.ambiguous and not _requires_review(candidate)
+        )
         if not confident:
             candidate=replace(candidate,product_id="")
         existing=self.pipeline.store.load_listings()
@@ -93,3 +97,17 @@ def validate_manual_payload(payload):
         except ValueError:raise ManualEntryError("detected_at","detected_at must be ISO-8601 or null")
     result.update(currency=currency,source_country=country,segment=payload["segment"],detected_at=detected,external_id="")
     return result
+
+
+def _requires_review(listing):
+    if any("contradict" in warning.casefold() for warning in listing.warnings):
+        return True
+    for defect in listing.defects:
+        try: confidence=float(defect.get("confidence",-1))
+        except (TypeError,ValueError): return True
+        if (defect.get("category") not in DEFECT_CATEGORIES
+                or defect.get("severity") not in DEFECT_SEVERITIES
+                or not str(defect.get("description","")).strip()
+                or not 0<=confidence<=1):
+            return True
+    return False
