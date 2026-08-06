@@ -22,6 +22,8 @@ STATIC_ROUTES = {
     "/app.js": "app.js", "/product.js": "product.js",
     "/compare.js": "compare.js", "/styles.css": "styles.css",
     "/assistant.css": "assistant.css",
+    "/manual-listing.js": "manual-listing.js",
+    "/manual-listing.css": "manual-listing.css",
 }
 SORTS = {"relevance", "brand", "newest", "used_price", "new_price", "confidence", "wishlist_priority"}
 PRIORITY = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, None: 4}
@@ -29,11 +31,14 @@ PRIORITY = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, None: 4}
 
 class DashboardRouter:
     def __init__(self, data: DashboardData, web_directory: Path,
-                 notification_store=None, assistant_provider=None) -> None:
+                 notification_store=None, assistant_provider=None,
+                 manual_service=None, data_loader=None) -> None:
         self.data = data
         self.web_directory = web_directory
         self.notification_store = notification_store
         self.assistant_provider = assistant_provider
+        self.manual_service = manual_service
+        self.data_loader = data_loader
 
     def dispatch(self, raw_path: str) -> Tuple[int, str, bytes]:
         parsed = urlsplit(raw_path)
@@ -53,6 +58,10 @@ class DashboardRouter:
             return self.notifications()
         if path == "/api/assistant/capabilities":
             return self.json(self.assistant_provider.capabilities())
+        if path == "/api/wishlist": return self.json({"items":self.data.context.get("wishlist_items",[])})
+        if path == "/api/inventory": return self.json({"items":self.data.context.get("inventory_items",[])})
+        if path == "/api/decisions": return self.json({"items":self.data.context.get("decision_items",[])})
+        if path == "/api/listings/live": return self.live_listings(parse_qs(parsed.query,keep_blank_values=True))
         if path in {"/api/products", "/api/search"}:
             return self.products(parse_qs(parsed.query, keep_blank_values=True), search_endpoint=path.endswith("search"))
         if path == "/api/compare": return self.compare(parse_qs(parsed.query, keep_blank_values=True))
@@ -92,7 +101,29 @@ class DashboardRouter:
             request = AssistantRequest(value["message"], value["product_id"], comparisons,
                 value["listing_id"], value["page_context"], datetime.now(timezone.utc))
             return self.json(_assistant_json(self.assistant_provider.query(request)))
+        if path == "/api/listings/manual":
+            try: result=self.manual_service.submit(value)
+            except Exception as error:
+                from radar.manual_entry import ManualEntryError
+                if isinstance(error,ManualEntryError): return self.error(400,"invalid_listing",error.message,error.field)
+                return self.error(500,"manual_entry_failed","Manual listing could not be saved.")
+            if self.data_loader:
+                self.data=self.data_loader();self.assistant_provider.data=self.data
+            return self.json(result,201 if result["status"]=="created" else 200)
         return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+
+    def live_listings(self,query):
+        allowed={"product_id","source","country","segment","active"};problem=self._validate_query(query,allowed)
+        if problem:return problem
+        values=list(self.data.context.get("live_listings",[]))
+        for key in ("product_id","source","country","segment"):
+            selected=self._one(query,key)
+            if selected is not None:values=[item for item in values if str(item.get(key) or "").casefold()==selected.casefold()]
+        active=self._one(query,"active")
+        if active is not None:
+            if active not in {"true","false"}:return self.error(400,"invalid_query","active must be true or false.")
+            values=[item for item in values if item["active"]==(active=="true")]
+        return self.json({"items":values,"count":len(values)})
 
     def notifications(self):
         values = self.notification_store.load() if self.notification_store else []
@@ -165,10 +196,13 @@ class DashboardRouter:
     def _one(query, key, default=None): return query.get(key, [default])[0]
 
     @staticmethod
-    def json(value): return HTTPStatus.OK, "application/json; charset=utf-8", json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    def json(value,status=HTTPStatus.OK): return status, "application/json; charset=utf-8", json.dumps(value, ensure_ascii=False, sort_keys=True).encode("utf-8")
 
     @staticmethod
-    def error(status, code, message): return status, "application/json; charset=utf-8", json.dumps({"error": {"code": code, "message": message}}, sort_keys=True).encode("utf-8")
+    def error(status, code, message,field=None):
+        value={"code":code,"message":message}
+        if field:value["field"]=field
+        return status,"application/json; charset=utf-8",json.dumps({"error":value},sort_keys=True).encode("utf-8")
 
 
 def _normalize(value: str) -> str: return " ".join(value.casefold().replace("-", " ").split())

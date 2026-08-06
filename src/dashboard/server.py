@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Optional, Sequence
@@ -18,6 +19,10 @@ from dashboard.demo_data import DemoDashboardDataProvider, LocalDashboardDataPro
 from dashboard.routes import DashboardRouter
 from assistant import DeterministicAssistantProvider
 from notifications import NotificationStore
+from radar.manual_entry import ManualListingService
+from radar.pipeline import RadarPipeline
+from radar.persistence import RadarStore
+from dashboard.demo_data import _catalog
 
 
 HOST = "127.0.0.1"
@@ -31,6 +36,11 @@ class DashboardHTTPServer(ThreadingHTTPServer):
     def __init__(self, address, router: DashboardRouter):
         self.router = router
         super().__init__(address, DashboardRequestHandler)
+
+    def server_close(self):
+        super().server_close()
+        temporary=getattr(self,"temporary_runtime",None)
+        if temporary:temporary.cleanup();self.temporary_runtime=None
 
 
 class DashboardRequestHandler(BaseHTTPRequestHandler):
@@ -53,8 +63,9 @@ class DashboardRequestHandler(BaseHTTPRequestHandler):
             self._respond(415, "application/json; charset=utf-8", b'{"error":{"code":"content_type","message":"application/json required"}}'); return
         try: length = int(self.headers.get("Content-Length", "0"))
         except ValueError: length = -1
-        if length < 0 or length > 65536:
-            self._respond(413, "application/json; charset=utf-8", b'{"error":{"code":"body_too_large","message":"request body exceeds 64 KiB"}}'); return
+        limit=262144 if self.path=="/api/listings/manual" else 65536
+        if length < 0 or length > limit:
+            self._respond(413, "application/json; charset=utf-8", b'{"error":{"code":"body_too_large","message":"request body exceeds endpoint limit"}}'); return
         try:
             value = json.loads(self.rfile.read(length) or b"{}")
             if not isinstance(value, dict): raise ValueError
@@ -90,14 +101,20 @@ def create_server(
     if not 0 <= port <= 65535:
         raise ValueError("port must be from 0 to 65535")
     root = project_root or Path(__file__).resolve().parents[2]
-    runtime = user_directory or root / "data" / "user"
-    provider = DemoDashboardDataProvider(root, user_directory) if demo else LocalDashboardDataProvider(root, user_directory)
-    data = provider.load()
+    temporary=None
+    if demo and user_directory is None:
+        temporary=tempfile.TemporaryDirectory(prefix="pmi-demo-");runtime=Path(temporary.name)
+    else:runtime=user_directory or root / "data" / "user"
+    provider = DemoDashboardDataProvider(root, runtime) if demo else LocalDashboardDataProvider(root, runtime)
+    data_loader=provider.load;data=data_loader()
     notification_store = NotificationStore(runtime)
     preferences = notification_store.load_preferences()
     assistant = DeterministicAssistantProvider(data, runtime, preferences.assistant_history_enabled)
-    router = DashboardRouter(data, root / "web", notification_store, assistant)
-    return DashboardHTTPServer((HOST, port), router)
+    products,aliases=_catalog(root)
+    manual_service=ManualListingService(RadarPipeline(RadarStore(runtime),products,aliases,user_directory=runtime))
+    router = DashboardRouter(data, root / "web", notification_store, assistant,manual_service,data_loader)
+    server=DashboardHTTPServer((HOST, port), router);server.temporary_runtime=temporary
+    return server
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

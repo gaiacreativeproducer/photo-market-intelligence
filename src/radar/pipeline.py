@@ -97,7 +97,7 @@ class RadarPipeline:
                         value = connector.normalize_record(record)
                         source_normalized += 1
                         normalized_count += 1
-                        listing, relevant = self._to_listing(
+                        listing, relevant, _recognition = self._to_listing(
                             run_id, source, value, record.reference,
                             record.explicitly_supplied, watches, now, product_categories,
                         )
@@ -229,7 +229,7 @@ class RadarPipeline:
             [defect.__dict__ for defect in analysis.defects], analysis.accessories,
             analysis.seller_claims, analysis.missing_information, warnings,
         )
-        return listing, watch_match or recognized or explicit
+        return listing, watch_match or recognized or explicit, recognition
 
     @staticmethod
     def _upsert(listings, candidate):
