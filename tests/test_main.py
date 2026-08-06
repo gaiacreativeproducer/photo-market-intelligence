@@ -66,6 +66,13 @@ class MainTests(unittest.TestCase):
             "Market confidence: 70\n",
             "Listing quality average: 100.00\n",
             "Estimated 12-month depreciation: Unavailable\n",
+            "Ownership example: Sony A7 IV new versus used\n",
+            "Ownership recommendation:",
+            "a7-iv-new acquisition cost: 1595.00\n",
+            "a7-iv-used acquisition cost: 1200.00\n",
+            "Break-even target used price:",
+            "Ownership example: cracked lens new versus used\n",
+            "Ownership recommendation: MANUAL_REVIEW\n",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)
