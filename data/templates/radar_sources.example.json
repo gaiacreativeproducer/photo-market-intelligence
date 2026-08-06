@@ -1,0 +1,19 @@
+{
+  "sources": [
+    {
+      "source_id": "example-json",
+      "name": "Disabled example JSON feed",
+      "source_type": "JSON_FEED",
+      "endpoint": "https://example.invalid/listings.json",
+      "enabled": false,
+      "country": "IT",
+      "currency": "EUR",
+      "segment": "USED",
+      "request_timeout_seconds": 15,
+      "retry_count": 0,
+      "minimum_request_interval_seconds": 3600,
+      "mapping": {"external_id": "id", "url": "url", "title": "title", "description": "description", "price": "price"},
+      "notes": "Placeholder only"
+    }
+  ]
+}

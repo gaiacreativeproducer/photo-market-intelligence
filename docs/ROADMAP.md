@@ -116,3 +116,9 @@ Task:
 # VERSIONE 1.0
 
 Sistema completamente funzionante.
+# Sprint 11 — Universal live radar pipeline (completed)
+
+- Source-neutral JSON feed, RSS/Atom, file-import, and manually supplied URL adapters.
+- Relevant-only live listing persistence with privacy-safe description storage.
+- Recoverable radar runs, source health summaries, and local dashboard integration.
+- Dedicated marketplace discovery remains behind connector-specific terms review.
