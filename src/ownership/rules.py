@@ -41,35 +41,54 @@ def acquisition_cost(option: PurchaseOption) -> Optional[float]:
 def protection_factors(
     option: PurchaseOption, cost: float,
     accessory_reference_prices: Mapping[str, float],
-) -> Tuple[List[OwnershipFactor], float, int, List[str]]:
+) -> Tuple[List[OwnershipFactor], int, float, int, List[str]]:
     factors: List[OwnershipFactor] = []
     warnings: List[str] = []
     warranty_percent = 0.0
+    warranty_score = 0
     if option.warranty_months is not None and option.warranty_months > 0:
         if option.purchase_type == PurchaseType.NEW:
             warranty_percent = 8 if option.warranty_months >= 24 else (
                 5 if option.warranty_months >= 12 else 2
             )
+            warranty_score = 35 if option.warranty_months >= 24 else (
+                25 if option.warranty_months >= 12 else 10
+            )
         elif option.transferable_warranty is True:
             warranty_percent = 5 if option.warranty_months >= 12 else 2
+            warranty_score = 25 if option.warranty_months >= 12 else 10
         else:
+            warranty_score = 5
             warnings.append(
                 "Used warranty information is preserved but has no monetary value because transferability is not confirmed."
             )
     warranty_value = min(cost * 0.08, cost * warranty_percent / 100)
     factors.append(factor(
-        "warranty_protection", "protected_value", warranty_percent,
+        "warranty_protection_reference", "protection_reference", warranty_percent,
         warranty_value,
         f"months={option.warranty_months!r}; transferable={option.transferable_warranty!r}",
-        f"Warranty economic protection is valued at {warranty_percent:.1f}% of acquisition cost.",
+        f"Warranty has a non-cash reference value of {warranty_percent:.1f}% of acquisition cost.",
+        100 if option.warranty_months is not None else 40,
+    ))
+    factors.append(factor(
+        "warranty_protection_score", "protection_score", warranty_score,
+        warranty_score,
+        f"months={option.warranty_months!r}; transferable={option.transferable_warranty!r}",
+        "Warranty duration and transferability contribute to the non-cash protection score.",
         100 if option.warranty_months is not None else 40,
     ))
 
     return_percent = 0.0
+    return_score = 0
     if option.return_window_days is not None:
         return_percent = 2 if option.return_window_days >= 30 else (
             1 if option.return_window_days >= 14 else (
                 0.5 if option.return_window_days >= 1 else 0
+            )
+        )
+        return_score = 15 if option.return_window_days >= 30 else (
+            10 if option.return_window_days >= 14 else (
+                5 if option.return_window_days >= 1 else 0
             )
         )
     return_value = min(cost * 0.02, cost * return_percent / 100)
@@ -77,9 +96,15 @@ def protection_factors(
     if warranty_value + return_value > combined_cap:
         return_value = max(0.0, combined_cap - warranty_value)
     factors.append(factor(
-        "return_window_protection", "protected_value", return_percent,
+        "return_window_protection_reference", "protection_reference", return_percent,
         return_value, f"days={option.return_window_days!r}",
-        f"Return-window economic protection is valued at {return_percent:.1f}% of acquisition cost.",
+        f"Return rights have a non-cash reference value of {return_percent:.1f}% of acquisition cost.",
+        100 if option.return_window_days is not None else 40,
+    ))
+    factors.append(factor(
+        "return_window_protection_score", "protection_score", return_score,
+        return_score, f"days={option.return_window_days!r}",
+        "Return rights contribute to the non-cash protection score.",
         100 if option.return_window_days is not None else 40,
     ))
 
@@ -88,18 +113,48 @@ def protection_factors(
     )
     factors.extend(accessory_factors)
     factors.append(factor(
-        "invoice_provenance", "documentation", 1 if option.invoice_available else 0,
-        0, f"invoice_available={option.invoice_available!r}",
-        "Invoice evidence improves provenance but has no monetary protected value in V1.",
+        "invoice_provenance", "protection_score", 10 if option.invoice_available else 0,
+        10 if option.invoice_available else 0,
+        f"invoice_available={option.invoice_available!r}",
+        "Invoice evidence contributes to protection confidence but has no monetary reference value.",
         100 if option.invoice_available is not None else 50,
     ))
     factors.append(factor(
-        "condition_provenance", "condition", 1 if option.condition_known else 0,
-        0, f"condition_known={option.condition_known!r}",
-        "Known condition and wear evidence are explanatory and are not monetized as protected value.",
+        "condition_provenance", "protection_score", 15 if option.condition_known else 0,
+        15 if option.condition_known else 0,
+        f"condition_known={option.condition_known!r}",
+        "Known condition contributes to the protection score and is not monetized.",
         100 if option.condition_known is not None else 40,
     ))
-    return factors, warranty_value + return_value + accessory_value, unknown_count, warnings
+    reliability_score = (
+        round(15 * max(0.0, min(100.0, option.seller_reliability_score)) / 100)
+        if option.seller_reliability_score is not None else 0
+    )
+    factors.append(factor(
+        "seller_protection_score", "protection_score", reliability_score,
+        reliability_score,
+        f"seller_reliability_score={option.seller_reliability_score!r}",
+        "Verified seller reliability contributes up to 15 points of non-cash protection.",
+        100 if option.seller_reliability_score is not None else 40,
+    ))
+    zero_wear_score = 10 if option.purchase_type == PurchaseType.NEW else 0
+    factors.append(factor(
+        "zero_wear_protection_score", "protection_score", zero_wear_score,
+        zero_wear_score, f"purchase_type={option.purchase_type.value}",
+        "New-equipment zero-wear status contributes to protection score but has no monetary value.",
+    ))
+    protection_score = min(
+        100,
+        warranty_score + return_score
+        + (10 if option.invoice_available else 0)
+        + (15 if option.condition_known else 0)
+        + reliability_score + zero_wear_score,
+    )
+    return (
+        factors, protection_score,
+        warranty_value + return_value + accessory_value,
+        unknown_count, warnings,
+    )
 
 
 def accessory_protection(
@@ -138,7 +193,7 @@ def accessory_protection(
         reference_key, reference_price = reference
         recognized_total += reference_price
         factors.append(factor(
-            "referenced_accessory", "protected_value", reference_price,
+            "referenced_accessory", "protection_reference", reference_price,
             reference_price,
             f"accessory={accessory!r}; matched_reference={reference_key!r}",
             "The accessory uses its explicitly injected reference price.",
@@ -147,10 +202,10 @@ def accessory_protection(
     protected = min(recognized_total, cap)
     if protected < recognized_total:
         factors.append(factor(
-            "accessory_value_cap", "protected_value", cap,
+            "accessory_value_cap", "protection_reference", cap,
             -(recognized_total - protected),
             f"recognized_total={recognized_total:.2f}; cap={cap:.2f}",
-            "Accessory protected value is capped at 15% of acquisition cost.",
+            "The non-cash accessory reference value is capped at 15% of acquisition cost.",
         ))
     return factors, protected, unknown_count
 

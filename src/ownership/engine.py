@@ -40,7 +40,8 @@ class OwnershipEngine:
                 "landed cost unavailable or purchase is not confirmed domestic",
                 "Ownership cost cannot be calculated without comparable acquisition cost.", 20,
             ))
-            protected_value = 0.0
+            protection_score = 0
+            protection_reference_value = 0.0
             risk_cost = 0.0
             protection = []
             risk = []
@@ -53,7 +54,10 @@ class OwnershipEngine:
                 "landed cost" if option.estimated_landed_cost is not None else "confirmed domestic purchase price",
                 "Acquisition cost uses landed cost when available, otherwise confirmed domestic price.",
             ))
-            protection, protected_value, unknown_accessories, protection_warnings = protection_factors(
+            (
+                protection, protection_score, protection_reference_value,
+                unknown_accessories, protection_warnings,
+            ) = protection_factors(
                 option, cost, self.accessory_reference_prices
             )
             risk, risk_cost, manual_review, major_risk = risk_factors(
@@ -73,15 +77,12 @@ class OwnershipEngine:
         )
         factors.extend(resale_factors)
 
-        without_resale = (
-            cost + risk_cost - protected_value if cost is not None else None
-        )
+        without_resale = cost + risk_cost if cost is not None else None
         with_resale = (
             without_resale - resale_value
             if without_resale is not None and resale_value is not None
             else None
         )
-        applicable = with_resale if horizon.planned_resale else without_resale
         if not horizon.planned_resale and resale_value is not None:
             warnings.append(
                 "Resale value is informational because planned_resale is False and is not subtracted from the applicable ownership cost."
@@ -91,8 +92,9 @@ class OwnershipEngine:
         )
         factors.extend(confidence_factors)
         return OwnershipProjection(
-            option.option_id, cost, protected_value, risk_cost, depreciation,
-            resale_value, applicable, with_resale, without_resale,
+            option.option_id, cost, risk_cost, depreciation,
+            resale_value, with_resale, without_resale,
+            protection_score, protection_reference_value,
             product.liquidity_score, confidence, factors,
             self._unique(warnings), self._unique(missing), manual_review,
             major_risk,
@@ -112,7 +114,7 @@ class OwnershipEngine:
             return OwnershipComparison(
                 None, OwnershipRecommendation.INSUFFICIENT_DATA,
                 min((item.confidence for item in projections), default=0),
-                projections, None, None, None, None, [],
+                projections, None, None, None, None, None, [],
                 ["A direct comparison requires one NEW and one USED option."], [],
             )
 
@@ -133,8 +135,8 @@ class OwnershipEngine:
         )
         if not currencies_match:
             warnings.append("Ownership options use different or missing currencies; no conversion is performed.")
-        new_cost = new_projection.estimated_net_ownership_cost
-        used_cost = used_projection.estimated_net_ownership_cost
+        new_cost = self._applicable_cost(new_projection, horizon)
+        used_cost = self._applicable_cost(used_projection, horizon)
         applicable = comparable and new_cost is not None and used_cost is not None
         price_difference = (
             new_projection.acquisition_cost - used_projection.acquisition_cost
@@ -151,12 +153,15 @@ class OwnershipEngine:
             break_even_target, break_even_discount = self._break_even(
                 product, new_option, used_option, horizon, options, new_cost
             )
+        protection_range = self._protection_adjusted_range(
+            break_even_target, new_projection, used_projection
+        )
         if break_even_target is not None and break_even_discount is not None:
             factors.extend([
                 factor(
                     "break_even_target", "break_even", break_even_target, 0,
                     "bounded integer search from 0 to NEW acquisition cost",
-                    "This is the highest USED acquisition cost whose applicable net ownership cost does not exceed NEW.",
+                    "This is the highest USED acquisition cost whose applicable gross ownership cost does not exceed NEW.",
                 ),
                 factor(
                     "break_even_discount", "break_even", break_even_discount, 0,
@@ -164,18 +169,45 @@ class OwnershipEngine:
                     "Break-even discount is derived from the numeric target, without summing embedded costs twice.",
                 ),
             ])
+        if protection_range is not None:
+            factors.append(factor(
+                "protection_adjusted_target_range", "protection", 0, 0,
+                f"economic_target={break_even_target:.2f}; protection_scores={new_projection.protection_score}/{used_projection.protection_score}",
+                f"The non-cash protection score suggests a conservative negotiation range of {protection_range[0]:.2f}–{protection_range[1]:.2f}; it does not change economic break-even.",
+            ))
 
         recommendation, recommended_id, reasons = self._recommend(
             new_option, used_option, new_projection, used_projection,
             confidence, comparable, applicable, break_even_target,
-            expected_cost_difference,
+            new_cost, used_cost,
         )
+        if comparable:
+            factors.append(factor(
+                "nominal_purchase_saving", "comparison",
+                price_difference or 0, 0,
+                "NEW acquisition cost minus USED acquisition cost",
+                "Nominal purchase saving is shown separately from ownership economics.",
+            ))
+        if applicable:
+            factors.extend([
+                factor(
+                    "gross_ownership_cost_difference", "comparison",
+                    expected_cost_difference or 0, 0,
+                    "USED gross ownership cost minus NEW gross ownership cost",
+                    "The recommendation bands compare gross costs; protection is not subtracted.",
+                ),
+                factor(
+                    "protection_score_comparison", "protection", 0, 0,
+                    f"NEW={new_projection.protection_score}; USED={used_projection.protection_score}",
+                    "Protection is a non-cash score used only within the deterministic tie-break bands.",
+                ),
+            ])
         if not applicable:
             confidence = max(0, confidence - 30)
         return OwnershipComparison(
             recommended_id, recommendation, confidence, projections,
             price_difference, expected_cost_difference, break_even_discount,
-            break_even_target, factors, reasons, warnings,
+            break_even_target, protection_range, factors, reasons, warnings,
         )
 
     def _depreciation(
@@ -375,7 +407,7 @@ class OwnershipEngine:
             projection = self.project(
                 product, repriced, horizon, comparison_options
             )
-            candidate_cost = projection.estimated_net_ownership_cost
+            candidate_cost = self._applicable_cost(projection, horizon)
             if candidate_cost is not None and candidate_cost <= new_cost:
                 highest = float(candidate)
         if highest is None:
@@ -389,7 +421,7 @@ class OwnershipEngine:
         used_projection: OwnershipProjection, confidence: int,
         comparable: bool, applicable: bool,
         break_even_target: Optional[float],
-        expected_cost_difference: Optional[float],
+        new_cost: Optional[float], used_cost: Optional[float],
     ) -> Tuple[OwnershipRecommendation, Optional[str], List[str]]:
         if new_projection.manual_review or used_projection.manual_review:
             return OwnershipRecommendation.MANUAL_REVIEW, None, [
@@ -403,8 +435,6 @@ class OwnershipEngine:
             return OwnershipRecommendation.INSUFFICIENT_DATA, None, [
                 "Ownership evidence confidence is below 65; the engine does not default to NEW."
             ]
-        new_cost = new_projection.estimated_net_ownership_cost
-        used_cost = used_projection.estimated_net_ownership_cost
         if new_cost is None or used_cost is None:
             return OwnershipRecommendation.INSUFFICIENT_DATA, None, [
                 "Applicable ownership cost is unavailable."
@@ -414,16 +444,8 @@ class OwnershipEngine:
             used_projection.acquisition_cost is not None
             and used_projection.risk_cost > used_projection.acquisition_cost * 0.15
         )
-        if difference_ratio <= 0.03 and not material_risk:
-            return OwnershipRecommendation.EQUIVALENT, None, [
-                "Applicable net ownership costs are within 3% and neither option has material risk."
-            ]
         current_used = used_projection.acquisition_cost
         if break_even_target is not None and current_used is not None:
-            if current_used <= break_even_target and used_cost < new_cost and not material_risk:
-                return OwnershipRecommendation.PREFER_USED, used_option.option_id, [
-                    "USED is at or below the numeric break-even target and has lower applicable ownership cost."
-                ]
             required_reduction = current_used - break_even_target
             if (
                 required_reduction > 0
@@ -444,13 +466,91 @@ class OwnershipEngine:
             return OwnershipRecommendation.WAIT, None, [
                 "A sufficiently confident market snapshot shows prices falling by at least 3% over 30 days."
             ]
-        if expected_cost_difference is not None and expected_cost_difference > 0:
-            return OwnershipRecommendation.PREFER_NEW, new_option.option_id, [
-                "NEW has the lower applicable net ownership cost at current prices."
+        cheaper_is_used = used_cost < new_cost
+        percent = difference_ratio * 100
+        if difference_ratio > 0.10:
+            if cheaper_is_used and material_risk:
+                return OwnershipRecommendation.PREFER_NEW, new_option.option_id, [
+                    f"USED is {percent:.1f}% cheaper on gross ownership cost, but material USED risk blocks that economic preference."
+                ]
+            selected = used_option if cheaper_is_used else new_option
+            recommendation = (
+                OwnershipRecommendation.PREFER_USED if cheaper_is_used
+                else OwnershipRecommendation.PREFER_NEW
+            )
+            return recommendation, selected.option_id, [
+                f"{selected.purchase_type.value} is {percent:.1f}% cheaper on gross ownership cost; protection cannot overturn a difference above 10%."
             ]
-        return OwnershipRecommendation.PREFER_USED, used_option.option_id, [
-            "USED has the lower applicable net ownership cost and no rule blocks it."
+
+        protection_gap = new_projection.protection_score - used_projection.protection_score
+        if difference_ratio >= 0.05:
+            if abs(protection_gap) >= 10:
+                prefer_new = protection_gap > 0 or material_risk
+                selected = new_option if prefer_new else used_option
+                return (
+                    OwnershipRecommendation.PREFER_NEW if prefer_new
+                    else OwnershipRecommendation.PREFER_USED,
+                    selected.option_id,
+                    [f"Gross costs differ by {percent:.1f}% and the {abs(protection_gap)}-point protection gap resolves the 5–10% band."],
+                )
+            selected = used_option if cheaper_is_used else new_option
+            return (
+                OwnershipRecommendation.PREFER_USED if cheaper_is_used
+                else OwnershipRecommendation.PREFER_NEW,
+                selected.option_id,
+                [f"Gross costs differ by {percent:.1f}%; without a material protection gap, the cheaper option wins the 5–10% band."],
+            )
+
+        if material_risk:
+            return OwnershipRecommendation.PREFER_NEW, new_option.option_id, [
+                f"Gross costs are within {percent:.1f}%, so material USED risk determines the recommendation."
+            ]
+        if abs(protection_gap) >= 10:
+            prefer_new = protection_gap > 0
+            selected = new_option if prefer_new else used_option
+            return (
+                OwnershipRecommendation.PREFER_NEW if prefer_new
+                else OwnershipRecommendation.PREFER_USED,
+                selected.option_id,
+                [f"Gross costs are within {percent:.1f}%, so the {abs(protection_gap)}-point protection gap determines the recommendation."],
+            )
+        confidence_gap = new_projection.confidence - used_projection.confidence
+        if abs(confidence_gap) >= 10:
+            prefer_new = confidence_gap > 0
+            selected = new_option if prefer_new else used_option
+            return (
+                OwnershipRecommendation.PREFER_NEW if prefer_new
+                else OwnershipRecommendation.PREFER_USED,
+                selected.option_id,
+                [f"Gross costs are within {percent:.1f}% and protection is close, so the {abs(confidence_gap)}-point confidence gap determines the recommendation."],
+            )
+        return OwnershipRecommendation.EQUIVALENT, None, [
+            f"Gross ownership costs are within {percent:.1f}%, with no material protection, confidence, or risk difference."
         ]
+
+    @staticmethod
+    def _applicable_cost(
+        projection: OwnershipProjection, horizon: OwnershipHorizon
+    ) -> Optional[float]:
+        return (
+            projection.gross_ownership_cost_with_resale
+            if horizon.planned_resale
+            else projection.gross_ownership_cost_without_resale
+        )
+
+    @staticmethod
+    def _protection_adjusted_range(
+        economic_target: Optional[float], new_projection: OwnershipProjection,
+        used_projection: OwnershipProjection,
+    ) -> Optional[Tuple[float, float]]:
+        if economic_target is None:
+            return None
+        score_gap = max(0, new_projection.protection_score - used_projection.protection_score)
+        adjustment_percent = min(5.0, score_gap * 0.05)
+        return (
+            round(economic_target * (1 - adjustment_percent / 100), 2),
+            economic_target,
+        )
 
     @staticmethod
     def _snapshot_valid(

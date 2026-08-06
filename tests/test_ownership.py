@@ -39,10 +39,17 @@ class OwnershipEngineTests(unittest.TestCase):
             [self.new_option(), self.used_option()],
             self.horizon,
         )
-        self.assertEqual(comparison.recommendation, OwnershipRecommendation.PREFER_NEW)
-        self.assertEqual(comparison.recommended_option_id, "new")
-        self.assertIsNotNone(comparison.break_even_target_price)
+        self.assertEqual(comparison.recommendation, OwnershipRecommendation.PREFER_USED)
+        self.assertEqual(comparison.recommended_option_id, "used")
+        self.assertIsNotNone(comparison.break_even_target_used_price)
+        self.assertGreater(comparison.break_even_target_used_price, 1400)
+        self.assertLess(comparison.break_even_target_used_price, 1595)
         self.assertIsNotNone(comparison.break_even_discount_percent)
+        self.assertIsNotNone(comparison.protection_adjusted_target_range)
+        self.assertTrue(any(
+            "protection cannot overturn" in reason
+            for reason in comparison.reasons
+        ))
 
     def test_small_discount_prefers_new(self) -> None:
         comparison = self.engine().compare(
@@ -59,7 +66,7 @@ class OwnershipEngineTests(unittest.TestCase):
         )
         self.assertEqual(comparison.recommendation, OwnershipRecommendation.PREFER_USED)
 
-    def test_equivalent_ownership_cost(self) -> None:
+    def test_near_equal_cost_allows_protection_to_prefer_new(self) -> None:
         product = self.lens
         new_market = self.snapshot(product.id, "NEW", 1000)
         used_market = self.snapshot(product.id, "USED", 1000, depreciation_12=0)
@@ -72,7 +79,7 @@ class OwnershipEngineTests(unittest.TestCase):
             warranty=0, returns=0,
         )
         comparison = self.engine().compare(product, [new, used], self.horizon)
-        self.assertEqual(comparison.recommendation, OwnershipRecommendation.EQUIVALENT)
+        self.assertEqual(comparison.recommendation, OwnershipRecommendation.PREFER_NEW)
 
     def test_invoice_is_explanatory_not_monetary(self) -> None:
         known = self.engine().project(
@@ -81,10 +88,11 @@ class OwnershipEngineTests(unittest.TestCase):
         unknown = self.engine().project(
             self.camera, self.used_option(invoice=None), self.horizon
         )
-        self.assertEqual(known.protected_value, unknown.protected_value)
+        self.assertEqual(known.protection_reference_value, unknown.protection_reference_value)
         self.assertEqual(known.confidence, unknown.confidence + 5)
         invoice_factor = next(item for item in known.factors if item.name == "invoice_provenance")
-        self.assertEqual(invoice_factor.impact, 0)
+        self.assertEqual(invoice_factor.value, 10)
+        self.assertEqual(known.gross_ownership_cost_with_resale, unknown.gross_ownership_cost_with_resale)
 
     def test_new_condition_has_no_monetary_protection(self) -> None:
         option = replace(
@@ -94,9 +102,9 @@ class OwnershipEngineTests(unittest.TestCase):
         projection = self.engine().project(
             self.camera, option, self.horizon, [option, self.used_option()]
         )
-        self.assertEqual(projection.protected_value, 0)
+        self.assertEqual(projection.protection_reference_value, 0)
         condition = next(item for item in projection.factors if item.name == "condition_provenance")
-        self.assertEqual(condition.impact, 0)
+        self.assertEqual(condition.value, 15)
 
     def test_no_warranty_or_return_is_not_risk_cost(self) -> None:
         option = self.used_option(warranty=0, returns=0, shutter=0, reliability=100)
@@ -118,7 +126,7 @@ class OwnershipEngineTests(unittest.TestCase):
     def test_nontransferable_used_warranty_has_no_value(self) -> None:
         option = self.used_option(warranty=12, transferable=False)
         projection = self.engine().project(self.camera, option, self.horizon)
-        warranty = next(item for item in projection.factors if item.name == "warranty_protection")
+        warranty = next(item for item in projection.factors if item.name == "warranty_protection_reference")
         self.assertEqual(warranty.impact, 0)
         self.assertTrue(any("transferability" in warning for warning in projection.warnings))
 
@@ -131,10 +139,35 @@ class OwnershipEngineTests(unittest.TestCase):
             self.camera, option, self.horizon,
             [option, self.used_option(price=800)],
         )
-        self.assertEqual(projection.protected_value, 100)
+        self.assertEqual(projection.protection_reference_value, 100)
         names = {item.name for item in projection.factors}
-        self.assertIn("warranty_protection", names)
-        self.assertIn("return_window_protection", names)
+        self.assertIn("warranty_protection_reference", names)
+        self.assertIn("return_window_protection_reference", names)
+        unprotected = self.engine().project(
+            self.camera,
+            replace(option, warranty_months=0, return_window_days=0),
+            self.horizon, [option, self.used_option(price=800)],
+        )
+        self.assertEqual(
+            projection.gross_ownership_cost_with_resale,
+            unprotected.gross_ownership_cost_with_resale,
+        )
+        self.assertGreater(projection.protection_score, unprotected.protection_score)
+
+    def test_gross_cost_formula_never_subtracts_protection(self) -> None:
+        projection = self.engine().project(
+            self.camera, self.new_option(), self.horizon,
+            [self.new_option(), self.used_option()],
+        )
+        self.assertEqual(
+            projection.gross_ownership_cost_without_resale,
+            projection.acquisition_cost + projection.risk_cost,
+        )
+        self.assertEqual(
+            projection.gross_ownership_cost_with_resale,
+            projection.acquisition_cost + projection.risk_cost
+            - projection.estimated_resale_value,
+        )
 
     def test_minor_cosmetic_damage_has_zero_risk(self) -> None:
         defect = self.defect("cosmetic_damage", "minor")
@@ -195,17 +228,11 @@ class OwnershipEngineTests(unittest.TestCase):
         without_resale = self.engine().project(
             self.camera, option, OwnershipHorizon(12, "MEDIUM", False)
         )
-        self.assertEqual(
-            with_resale.estimated_net_ownership_cost,
-            with_resale.estimated_net_ownership_cost_with_resale,
-        )
-        self.assertEqual(
-            without_resale.estimated_net_ownership_cost,
-            without_resale.estimated_net_ownership_cost_without_resale,
-        )
+        self.assertIsNotNone(with_resale.gross_ownership_cost_with_resale)
+        self.assertIsNotNone(without_resale.gross_ownership_cost_without_resale)
         self.assertNotEqual(
-            without_resale.estimated_net_ownership_cost,
-            without_resale.estimated_net_ownership_cost_with_resale,
+            without_resale.gross_ownership_cost_without_resale,
+            without_resale.gross_ownership_cost_with_resale,
         )
 
     def test_unplanned_resale_effect_is_informational(self) -> None:
@@ -235,7 +262,7 @@ class OwnershipEngineTests(unittest.TestCase):
         projection = self.engine({"sony original battery": 50}).project(
             self.camera, option, self.horizon
         )
-        self.assertEqual(projection.protected_value, 100)
+        self.assertEqual(projection.protection_reference_value, 100)
         matched = [item for item in projection.factors if item.name == "referenced_accessory"]
         self.assertEqual(len(matched), 2)
         self.assertTrue(all("matched_reference" in item.evidence for item in matched))
@@ -246,7 +273,7 @@ class OwnershipEngineTests(unittest.TestCase):
         projection = self.engine({"dji rs 4": 500}).project(
             self.camera, option, self.horizon
         )
-        self.assertEqual(projection.protected_value, 150)
+        self.assertEqual(projection.protection_reference_value, 150)
         self.assertTrue(any(item.name == "accessory_value_cap" for item in projection.factors))
 
     def test_12_and_24_month_used_depreciation(self) -> None:
@@ -288,17 +315,17 @@ class OwnershipEngineTests(unittest.TestCase):
         comparison = self.engine().compare(
             self.camera, [self.new_option(), self.used_option()], self.horizon
         )
-        self.assertIsNotNone(comparison.break_even_target_price)
+        self.assertIsNotNone(comparison.break_even_target_used_price)
         self.assertIsNotNone(comparison.break_even_discount_percent)
         names = {item.name for item in comparison.factors}
-        self.assertEqual(names, {"break_even_target", "break_even_discount"})
+        self.assertTrue({"break_even_target", "break_even_discount"}.issubset(names))
         self.assertTrue(any("bounded" in item.evidence for item in comparison.factors))
 
     def test_near_break_even_produces_negotiation_target(self) -> None:
         base = self.engine().compare(
             self.camera, [self.new_option(), self.used_option(price=1)], self.horizon
         )
-        target = base.break_even_target_price
+        target = base.break_even_target_used_price
         self.assertIsNotNone(target)
         current = target * 1.05
         comparison = self.engine().compare(
@@ -307,7 +334,7 @@ class OwnershipEngineTests(unittest.TestCase):
             self.horizon,
         )
         self.assertEqual(comparison.recommendation, OwnershipRecommendation.NEGOTIATE_USED)
-        self.assertEqual(comparison.break_even_target_price, target)
+        self.assertEqual(comparison.break_even_target_used_price, target)
 
     def test_break_even_unavailable_without_depreciation(self) -> None:
         used = replace(
@@ -320,7 +347,7 @@ class OwnershipEngineTests(unittest.TestCase):
             self.camera, [self.new_option(), used],
             OwnershipHorizon(12, "MEDIUM", False),
         )
-        self.assertIsNone(comparison.break_even_target_price)
+        self.assertIsNone(comparison.break_even_target_used_price)
         self.assertIsNone(comparison.break_even_discount_percent)
 
     def test_mismatched_currency_is_insufficient(self) -> None:
@@ -371,8 +398,8 @@ class OwnershipEngineTests(unittest.TestCase):
             self.horizon,
         )
         self.assertAlmostEqual(
-            projection.protected_value,
-            sum(item.impact for item in projection.factors if item.category == "protected_value"),
+            projection.protection_reference_value,
+            sum(item.impact for item in projection.factors if item.category == "protection_reference"),
         )
         self.assertAlmostEqual(
             projection.risk_cost,

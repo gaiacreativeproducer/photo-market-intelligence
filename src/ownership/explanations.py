@@ -17,14 +17,19 @@ def format_comparison(label: str, comparison: OwnershipComparison) -> List[str]:
     for projection in comparison.projections:
         lines.extend([
             f"{projection.option_id} acquisition cost: {_money(projection.acquisition_cost)}",
-            f"{projection.option_id} protected value: {_money(projection.protected_value)}",
+            f"{projection.option_id} protection score: {projection.protection_score}",
+            f"{projection.option_id} protection reference value (non-cash): {_money(projection.protection_reference_value)}",
             f"{projection.option_id} risk cost: {_money(projection.risk_cost)}",
             f"{projection.option_id} resale value: {_money(projection.estimated_resale_value)}",
-            f"{projection.option_id} cost with resale: {_money(projection.estimated_net_ownership_cost_with_resale)}",
-            f"{projection.option_id} cost without resale: {_money(projection.estimated_net_ownership_cost_without_resale)}",
+            f"{projection.option_id} gross cost with resale: {_money(projection.gross_ownership_cost_with_resale)}",
+            f"{projection.option_id} gross cost without resale: {_money(projection.gross_ownership_cost_without_resale)}",
         ])
     lines.extend([
-        f"Break-even target used price: {_money(comparison.break_even_target_price)}",
+        f"Break-even target used price: {_money(comparison.break_even_target_used_price)}",
+        "Protection-adjusted target range (non-economic): " + (
+            f"{comparison.protection_adjusted_target_range[0]:.2f}–{comparison.protection_adjusted_target_range[1]:.2f}"
+            if comparison.protection_adjusted_target_range is not None else "Unavailable"
+        ),
         "Break-even discount: " + (
             f"{comparison.break_even_discount_percent:.2f}%"
             if comparison.break_even_discount_percent is not None else "Unavailable"

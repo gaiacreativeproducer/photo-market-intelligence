@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from connectors.models import ListingDefect
 from market.models import MarketSnapshot
@@ -71,13 +71,13 @@ class OwnershipFactor:
 class OwnershipProjection:
     option_id: str
     acquisition_cost: Optional[float]
-    protected_value: float
     risk_cost: float
     estimated_depreciation_percent: Optional[float]
     estimated_resale_value: Optional[float]
-    estimated_net_ownership_cost: Optional[float]
-    estimated_net_ownership_cost_with_resale: Optional[float]
-    estimated_net_ownership_cost_without_resale: Optional[float]
+    gross_ownership_cost_with_resale: Optional[float]
+    gross_ownership_cost_without_resale: Optional[float]
+    protection_score: int
+    protection_reference_value: float
     liquidity_score: Optional[float]
     confidence: int
     factors: List[OwnershipFactor] = field(default_factory=list)
@@ -96,7 +96,8 @@ class OwnershipComparison:
     price_difference: Optional[float]
     expected_cost_difference: Optional[float]
     break_even_discount_percent: Optional[float]
-    break_even_target_price: Optional[float]
+    break_even_target_used_price: Optional[float]
+    protection_adjusted_target_range: Optional[Tuple[float, float]]
     factors: List[OwnershipFactor] = field(default_factory=list)
     reasons: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
