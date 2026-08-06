@@ -116,6 +116,11 @@ Task:
 # VERSIONE 1.0
 
 Sistema completamente funzionante.
+# Sprint 12 — Notification center and contextual assistant (completed)
+
+- Local deterministic notifications with delivery state and deduplication.
+- Optional contextual dashboard assistant using allowlisted structured data.
+- Privacy-safe assistant history disabled by default and secured local APIs.
 # Sprint 11 — Universal live radar pipeline (completed)
 
 - Source-neutral JSON feed, RSS/Atom, file-import, and manually supplied URL adapters.

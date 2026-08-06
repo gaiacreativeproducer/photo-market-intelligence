@@ -311,6 +311,7 @@ def run(
     print("python3 -m src.dashboard.server")
     print("Radar once:")
     print("python3 -m src.radar.scheduler --once")
+    print("MVP modules: ready")
     print("System ready.")
     return 0
 
