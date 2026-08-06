@@ -45,6 +45,10 @@ Task:
 - [ ] MPB
 - [ ] RCE
 - [ ] deduplica
+- [x] Sprint 3: astrazione comune e modello annunci normalizzato
+- [x] Sprint 3: esecuzione indipendente, retry sicuri e deduplica connettori
+- [x] Sprint 3: monitoraggio salute e persistenza incidenti
+- [x] Sprint 3: connettore mock e proposte diagnostiche di riparazione
 
 ---
 
