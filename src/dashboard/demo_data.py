@@ -17,6 +17,7 @@ from market.models import MarketSnapshot
 from ownership.models import (
     OwnershipComparison, OwnershipProjection, OwnershipRecommendation,
 )
+from radar.persistence import RadarStore
 
 from .view_models import DashboardData, ProductView
 
@@ -52,7 +53,8 @@ class LocalDashboardDataProvider:
                 preferences = load_preferences(paths / "user_preferences.json")
         except (OSError, ValueError):
             raise
-        return _assemble("LOCAL", products, aliases, inventory, wishlist, decisions, preferences, False)
+        data = _assemble("LOCAL", products, aliases, inventory, wishlist, decisions, preferences, False)
+        return _add_radar_data(data, RadarStore(paths))
 
 
 class DemoDashboardDataProvider(LocalDashboardDataProvider):
@@ -156,6 +158,41 @@ def _detail(view: ProductView, rich: bool, inventory, wishlist, decisions) -> Di
         "memory": {"owned": view.owned, "wishlist": view.wishlist, "wishlist_priority": view.wishlist_priority, "target_price": view.target_price, "target_currency": view.target_currency, "recent_decisions": [{"decision": item.decision, "score": item.decision_score, "created_at": item.created_at.isoformat()} for item in memory_decisions]},
         "warnings": [] if rich else ["Market data is not yet available."],
     }
+
+
+def _add_radar_data(data: DashboardData, store: RadarStore) -> DashboardData:
+    """Add only privacy-safe, relevant live-radar fields to local views."""
+    listings = [item for item in store.load_listings() if item.active]
+    for item in listings:
+        if item.product_id not in data.details:
+            continue
+        data.details[item.product_id]["listings"].append({
+            "source": item.source_name, "title": item.title,
+            "price": item.price, "currency": item.currency,
+            "country": item.source_country, "condition": item.condition,
+            "segment": item.segment,
+            "first_seen": item.first_seen_at.isoformat(),
+            "last_seen": item.last_seen_at.isoformat(),
+            "recognition_confidence": item.recognition_confidence,
+            "description_confidence": item.description_confidence,
+            "defects": item.defects, "accessories": item.accessories,
+            "recommendation": "MONITOR", "url": item.url,
+        })
+    runs = store.load_runs()
+    health = store.load_health()
+    latest = max(runs, key=lambda item: item.started_at) if runs else None
+    data.context.update({
+        "live_listing_count": len(listings),
+        "latest_radar_status": latest.status.value if latest else None,
+        "latest_radar_ignored_count": latest.listing_count_ignored if latest else 0,
+        "radar_source_health": [
+            {"source_id": item.source_id, "status": item.status,
+             "checked_at": item.checked_at.isoformat(),
+             "relevant_persisted_count": item.relevant_persisted_count}
+            for item in health
+        ],
+    })
+    return data
 
 
 def _snapshot(product_id: str, segment: str, median: Optional[float]) -> MarketSnapshot:

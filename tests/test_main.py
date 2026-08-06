@@ -79,7 +79,8 @@ class MainTests(unittest.TestCase):
             "Wishlist flags sigma-24-70mm-f2-8-dg-dn-ii-art:",
             "Inventory gaps:",
             "Recent decision count: 0\n",
-            "Dashboard command:\npython3 -m src.dashboard.server\n",
+            "Dashboard:\npython3 -m src.dashboard.server\n",
+            "Radar once:\npython3 -m src.radar.scheduler --once\n",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)
