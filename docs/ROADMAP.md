@@ -97,6 +97,9 @@ Task:
 - [ ] grafici
 - [ ] KPI
 - [ ] filtri
+- [x] Sprint 10: dashboard locale read-only con catalogo completo
+- [x] Sprint 10: ricerca, filtri, dettagli e confronto prodotti
+- [x] Sprint 10: provider dati locale e demo con API privacy-safe
 
 ---
 

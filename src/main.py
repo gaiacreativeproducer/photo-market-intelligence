@@ -307,6 +307,8 @@ def run(
             print(f"Wishlist flags {item.product_id}: {'; '.join(flag.value for flag in item.flags)}")
         print(f"Inventory gaps: {'; '.join(user_context.missing_system_gaps) or 'None'}")
         print(f"Recent decision count: {len(user_context.recent_decisions)}")
+    print("Dashboard command:")
+    print("python3 -m src.dashboard.server")
     print("System ready.")
     return 0
 
