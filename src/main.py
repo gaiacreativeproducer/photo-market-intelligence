@@ -20,6 +20,7 @@ from catalog import (
 from connectors import ConnectorManager, MockConnector, SearchQuery
 from decision import DecisionEngine, MarketStatistics, NewAlternative
 from decision.explanations import format_report_summary
+from knowledge import ProductMatcher
 
 
 ROW_COUNT_FILES = {
@@ -128,6 +129,30 @@ def run(
     print(f"Seller claims: {'; '.join(analysis.seller_claims) or 'None'}")
     print(f"Description missing information: {'; '.join(analysis.missing_information) or 'None'}")
     print(f"Description analysis confidence: {analysis.confidence}")
+    matcher = ProductMatcher(products, aliases)
+    recognition_examples = (
+        ("single product", "Sony A7IV ILCE-7M4 corpo macchina"),
+        ("kit", "Sony A7 IV + Sigma 24-70 DG DN II + DJI RS 4"),
+        ("first generation", "Sigma 24-70 DG DN prima serie"),
+    )
+    for label, title in recognition_examples:
+        recognition = matcher.recognize(title, "")
+        primary = products_by_id.get(recognition.product_id)
+        print(f"Recognition example: {label}")
+        print(
+            "Recognized primary product: "
+            + (
+                f"{primary.brand} {primary.model} {primary.version}".strip()
+                if primary else "None"
+            )
+        )
+        print(f"Recognition confidence: {recognition.confidence}")
+        print(
+            "Recognition candidates: "
+            + ("; ".join(candidate.product_id for candidate in recognition.candidates) or "None")
+        )
+        print(f"Recognition ambiguous: {recognition.ambiguous}")
+        print(f"Recognition warnings: {'; '.join(recognition.warnings) or 'None'}")
     print("System ready.")
     return 0
 

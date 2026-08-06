@@ -71,6 +71,9 @@ Task:
 - [x] Sprint 5: analisi deterministica bilingue delle descrizioni
 - [x] Sprint 5: estrazione di condizioni, accessori, documenti e difetti
 - [x] Sprint 5: integrazione immutabile dei fatti negli annunci normalizzati
+- [x] Sprint 6: riconoscimento deterministico di prodotto, versione e attacco
+- [x] Sprint 6: ranking spiegabile, gestione ambiguità e annunci kit
+- [x] Sprint 6: integrazione del catalogo normalizzato e degli alias
 
 ---
 

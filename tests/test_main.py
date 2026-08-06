@@ -54,6 +54,11 @@ class MainTests(unittest.TestCase):
             "Invoice available: True\n",
             "Original box available: True\n",
             "Description analysis confidence:",
+            "Recognition example: single product\n",
+            "Recognized primary product: Sony Alpha A7 IV\n",
+            "Recognition example: kit\n",
+            "Recognition example: first generation\n",
+            "Recognized primary product: Sigma 24-70mm f/2.8 DG DN Art\n",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)
