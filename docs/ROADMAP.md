@@ -77,6 +77,9 @@ Task:
 - [x] Sprint 7: pulizia deterministica e osservazioni di mercato trasparenti
 - [x] Sprint 7: statistiche, outlier e confidence del mercato
 - [x] Sprint 7: trend storici e svalutazione con requisiti di confidenza
+- [x] Sprint 8: confronto deterministico dei percorsi nuovo e usato
+- [x] Sprint 8: valore protetto, rischio, rivendita e costo di possesso
+- [x] Sprint 8: break-even numerico e raccomandazioni spiegabili
 
 ---
 

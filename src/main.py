@@ -22,6 +22,10 @@ from decision import DecisionEngine, MarketStatistics, NewAlternative
 from decision.explanations import format_report_summary
 from knowledge import ProductMatcher
 from market import MarketEngine
+from ownership import (
+    OwnershipEngine, OwnershipHorizon, PurchaseOption, PurchaseType,
+)
+from ownership.explanations import format_comparison
 
 
 ROW_COUNT_FILES = {
@@ -199,6 +203,79 @@ def run(
                 else "Unavailable"
             )
         )
+        used_ownership_market = replace(
+            market_snapshot,
+            median_price=1400.0,
+            estimated_12_month_depreciation=10.0,
+            estimated_24_month_depreciation=20.0,
+        )
+        new_ownership_market = replace(
+            used_ownership_market,
+            segment="NEW",
+            median_price=1595.0,
+            estimated_12_month_depreciation=None,
+            estimated_24_month_depreciation=None,
+        )
+        new_camera_option = PurchaseOption(
+            option_id="a7-iv-new", purchase_type=PurchaseType.NEW,
+            purchase_price=1595.0, currency="EUR", warranty_months=24,
+            return_window_days=14, estimated_landed_cost=1595.0,
+            shutter_count=0, defects=[], accessories=[],
+            seller_reliability_score=95, market_snapshot=new_ownership_market,
+            notes="Authorized retailer", source_country="Italy",
+            target_market_country="Italy", transferable_warranty=True,
+            invoice_available=True, condition_known=True,
+        )
+        used_camera_option = PurchaseOption(
+            option_id="a7-iv-used", purchase_type=PurchaseType.USED,
+            purchase_price=1200.0, currency="EUR", warranty_months=0,
+            return_window_days=0, estimated_landed_cost=1200.0,
+            shutter_count=60_000, defects=[], accessories=[],
+            seller_reliability_score=95, market_snapshot=used_ownership_market,
+            notes="Private used listing", source_country="Italy",
+            target_market_country="Italy", transferable_warranty=False,
+            invoice_available=True, condition_known=True,
+        )
+        ownership_engine = OwnershipEngine()
+        camera_comparison = ownership_engine.compare(
+            market_product, [new_camera_option, used_camera_option],
+            OwnershipHorizon(12, "MEDIUM", True),
+        )
+        for line in format_comparison("Sony A7 IV new versus used", camera_comparison):
+            print(line)
+
+        lens_product = products_by_id.get(
+            "sigma-24-70mm-f2-8-dg-dn-ii-art"
+        )
+        if lens_product is not None:
+            used_lens_market = replace(
+                used_ownership_market,
+                product_id=lens_product.id, median_price=900.0,
+            )
+            new_lens_market = replace(
+                used_lens_market, segment="NEW", median_price=1250.0,
+                estimated_12_month_depreciation=None,
+                estimated_24_month_depreciation=None,
+            )
+            new_lens_option = PurchaseOption(
+                "lens-new", PurchaseType.NEW, 1250.0, "EUR", 24, 14,
+                1250.0, None, [], [], 95, new_lens_market,
+                "Authorized retailer", "Italy", "Italy", True, True, True,
+            )
+            used_lens_option = PurchaseOption(
+                "lens-cracked-used", PurchaseType.USED, 300.0, "EUR", 0, 0,
+                300.0, None, cracked_listing.defects, [], 80,
+                used_lens_market, "Cracked front element", "Italy", "Italy",
+                False, True, True,
+            )
+            cracked_comparison = ownership_engine.compare(
+                lens_product, [new_lens_option, used_lens_option],
+                OwnershipHorizon(12, "MEDIUM", True),
+            )
+            for line in format_comparison(
+                "cracked lens new versus used", cracked_comparison
+            ):
+                print(line)
     print("System ready.")
     return 0
 
