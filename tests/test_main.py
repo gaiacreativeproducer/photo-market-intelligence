@@ -1,4 +1,4 @@
-"""Tests for the minimal Photo Market Intelligence application."""
+"""Tests for the Photo Market Intelligence application entry point."""
 
 from __future__ import annotations
 
@@ -10,12 +10,19 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
+from typing import Sequence
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
 import main
+from catalog import (
+    MANUFACTURER_FIELDS,
+    MOUNT_FIELDS,
+    PRODUCT_ALIAS_FIELDS,
+    PRODUCT_FIELDS,
+)
 
 
 class MainTests(unittest.TestCase):
@@ -33,7 +40,10 @@ class MainTests(unittest.TestCase):
             result.stdout,
             "Photo Market Intelligence\n"
             "Status: OK\n"
-            "Products: 0\n"
+            "Products: 34\n"
+            "Product aliases: 54\n"
+            "Manufacturers: 13\n"
+            "Mounts: 10\n"
             "Wishlist: 0\n"
             "Listings: 0\n"
             "System ready.\n",
@@ -45,10 +55,9 @@ class MainTests(unittest.TestCase):
             root = Path(temporary_directory)
             data_directory = root / "data"
             data_directory.mkdir()
-
-            self.write_csv(data_directory / "products.csv", 2)
-            self.write_csv(data_directory / "wishlist.csv", 1)
-            self.write_csv(data_directory / "listings.csv", 3)
+            self.write_catalog(data_directory, product_count=2, alias_count=1)
+            self.write_simple_csv(data_directory / "wishlist.csv", 1)
+            self.write_simple_csv(data_directory / "listings.csv", 3)
 
             output = StringIO()
             with redirect_stdout(output):
@@ -56,6 +65,9 @@ class MainTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertIn("Products: 2", output.getvalue())
+            self.assertIn("Product aliases: 1", output.getvalue())
+            self.assertIn("Manufacturers: 1", output.getvalue())
+            self.assertIn("Mounts: 1", output.getvalue())
             self.assertIn("Wishlist: 1", output.getvalue())
             self.assertIn("Listings: 3", output.getvalue())
 
@@ -64,9 +76,8 @@ class MainTests(unittest.TestCase):
             root = Path(temporary_directory)
             data_directory = root / "data"
             data_directory.mkdir()
-
-            self.write_csv(data_directory / "products.csv", 0)
-            self.write_csv(data_directory / "wishlist.csv", 0)
+            self.write_catalog(data_directory, product_count=0, alias_count=0)
+            self.write_simple_csv(data_directory / "wishlist.csv", 0)
 
             error_output = StringIO()
             with redirect_stderr(error_output):
@@ -76,8 +87,55 @@ class MainTests(unittest.TestCase):
             self.assertIn("required CSV file not found", error_output.getvalue())
             self.assertIn("listings.csv", error_output.getvalue())
 
+    @classmethod
+    def write_catalog(
+        cls, data_directory: Path, product_count: int, alias_count: int
+    ) -> None:
+        cls.write_dict_csv(
+            data_directory / "manufacturers.csv",
+            MANUFACTURER_FIELDS,
+            [{"id": "test", "name": "Test", "normalized_name": "test"}],
+        )
+        cls.write_dict_csv(
+            data_directory / "mounts.csv",
+            MOUNT_FIELDS,
+            [{"id": "none", "name": "None", "mount_type": "Not applicable"}],
+        )
+        products = [
+            {
+                "id": f"product-{index}",
+                "category": "Camera",
+                "product_type": "Mirrorless",
+                "brand": "Test",
+                "model": f"Model {index}",
+                "native_mount": "none",
+            }
+            for index in range(product_count)
+        ]
+        cls.write_dict_csv(
+            data_directory / "products.csv", PRODUCT_FIELDS, products
+        )
+        aliases = [
+            {
+                "alias": f"alias {index}",
+                "product_id": products[index % product_count]["id"],
+                "alias_type": "common_name",
+            }
+            for index in range(alias_count)
+        ] if product_count else []
+        cls.write_dict_csv(
+            data_directory / "product_aliases.csv", PRODUCT_ALIAS_FIELDS, aliases
+        )
+
     @staticmethod
-    def write_csv(csv_path: Path, row_count: int) -> None:
+    def write_dict_csv(csv_path: Path, fields: Sequence[str], rows) -> None:
+        with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=fields)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    @staticmethod
+    def write_simple_csv(csv_path: Path, row_count: int) -> None:
         with csv_path.open("w", newline="", encoding="utf-8") as csv_file:
             writer = csv.writer(csv_file)
             writer.writerow(["id"])
