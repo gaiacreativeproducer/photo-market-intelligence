@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime, timezone
 from typing import List
 
 from .base import Connector
-from .models import ConnectorError, Listing, SearchQuery
+from .models import ConnectorError, Listing, ListingDefect, SearchQuery
 
 
 class MockConnector(Connector):
@@ -18,6 +19,10 @@ class MockConnector(Connector):
         "authentication_failure",
         "malformed",
         "partial",
+        "clean_with_warranty",
+        "cracked_lens",
+        "high_shutter_count",
+        "incomplete_condition",
     }
 
     def __init__(self, scenario: str = "healthy", **kwargs) -> None:
@@ -49,6 +54,40 @@ class MockConnector(Connector):
             return []
 
         listing = self._listing_for(query)
+        if self.scenario == "clean_with_warranty":
+            listing = replace(
+                listing,
+                warranty_until="2027-04-30",
+                invoice_available=True,
+                original_box_available=True,
+                accessories=[
+                    "Sony original NP-FZ100 battery",
+                    "Sony original NP-FZ100 battery",
+                    "Sony BC-QZ1 charger",
+                ],
+                seller_claims=["Fully functional", "No visible damage"],
+            )
+        elif self.scenario == "cracked_lens":
+            listing = replace(
+                listing,
+                price=350.0,
+                defects=[ListingDefect(
+                    category="cracks",
+                    description="Cracked front element",
+                    severity="critical",
+                    affected_component="front element",
+                    source_text="Front glass is cracked.",
+                    confidence=1.0,
+                )],
+            )
+        elif self.scenario == "high_shutter_count":
+            listing = replace(listing, shutter_count=160_000)
+        elif self.scenario == "incomplete_condition":
+            listing = replace(
+                listing,
+                condition="Unknown",
+                missing_information=["condition details", "warranty status"],
+            )
         if self.scenario == "partial":
             listing = Listing(
                 external_id=listing.external_id,

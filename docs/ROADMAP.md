@@ -65,6 +65,9 @@ Task:
 - [ ] score
 - [ ] motivazione
 - [ ] confidence score
+- [x] Sprint 4: fatti strutturati per condizioni, difetti, garanzia e accessori
+- [x] Sprint 4: motore decisionale esplicito e spiegabile
+- [x] Sprint 4: confronto deterministico nuovo-usato e confidence score
 
 ---
 
