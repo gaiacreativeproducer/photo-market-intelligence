@@ -50,6 +50,10 @@ class MainTests(unittest.TestCase):
             "Connector incidents: 0\n",
             "Decision example: clean used versus new\n",
             "Decision example: low price with cracked lens\n",
+            "Extracted shutter count: 60000\n",
+            "Invoice available: True\n",
+            "Original box available: True\n",
+            "Description analysis confidence:",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)

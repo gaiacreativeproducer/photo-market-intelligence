@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from analyzers import DescriptionAnalyzer
 from catalog import (
     CatalogValidationError,
     load_manufacturers,
@@ -105,6 +106,28 @@ def run(
             print(line)
         for line in format_report_summary("low price with cracked lens", cracked_report):
             print(line)
+    example_description = (
+        "Sony A7 IV con circa 60k scatti, fattura presente, scatola originale "
+        "e tre batterie originali Sony. Piccolo graffio sulla scocca. "
+        "Perfettamente funzionante."
+    )
+    analysis = DescriptionAnalyzer(as_of=date(2026, 4, 15)).analyze(
+        "Sony A7 IV", example_description, "Camera"
+    )
+    print(f"Extracted shutter count: {analysis.shutter_count}")
+    print(f"Invoice available: {analysis.invoice_available}")
+    print(f"Original box available: {analysis.original_box_available}")
+    print(f"Extracted accessories: {'; '.join(analysis.accessories) or 'None'}")
+    print(
+        "Extracted defects: "
+        + ("; ".join(
+            f"{item.category}/{item.severity}: {item.description}"
+            for item in analysis.defects
+        ) or "None")
+    )
+    print(f"Seller claims: {'; '.join(analysis.seller_claims) or 'None'}")
+    print(f"Description missing information: {'; '.join(analysis.missing_information) or 'None'}")
+    print(f"Description analysis confidence: {analysis.confidence}")
     print("System ready.")
     return 0
 
