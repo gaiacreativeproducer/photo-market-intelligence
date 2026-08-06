@@ -70,7 +70,8 @@ class DemoDashboardDataProvider(LocalDashboardDataProvider):
             WishlistItem("demo-tele", "sony-fe-70-200mm-f2-8-gm-oss-ii", 1800, "EUR", WishlistPriority.MEDIUM, PurchaseCondition.USED, None, "", WishlistStatus.ACTIVE, now, now),
         ]
         decisions = [DecisionHistoryEntry("demo-decision", "sony-alpha-a7-iv", "https://example.invalid/listing/a7iv", "Demo Market", "BUY_USED", 88, "PREFER_USED", 1200, "EUR", ["Below used median"], "", now)]
-        return _assemble("DEMO", products, aliases, inventory, wishlist, decisions, UserPreferences(target_market_country="Italy"), True)
+        data = _assemble("DEMO", products, aliases, inventory, wishlist, decisions, UserPreferences(target_market_country="Italy"), True)
+        return _add_radar_data(data, RadarStore(self.user_directory))
 
 
 def _catalog(root: Path):
@@ -121,8 +122,41 @@ def _assemble(
         "recent_decision_count": len(context.recent_decisions),
         "wishlist_context": [{"product_id": item.product_id, "flags": [flag.value for flag in item.flags]} for item in context.wishlist_context],
         "inventory_gaps": context.missing_system_gaps,
+        "wishlist_items": [_wishlist_view(item, products, context.wishlist_context) for item in active_wishlist.values()],
+        "inventory_items": [_inventory_view(item, products) for item in inventory],
+        "decision_items": [_decision_view(item, products) for item in sorted(decisions,key=lambda value:(value.created_at,value.entry_id),reverse=True)],
     }
     return DashboardData(mode, sorted(views, key=lambda item: item.id), details, safe_context)
+
+
+def _name(product_id,products):
+    product=next((item for item in products if item.id==product_id),None)
+    return " ".join(value for value in (product.brand,product.model,product.version) if value) if product else product_id
+
+
+def _wishlist_view(item,products,contexts):
+    context=next((value for value in contexts if value.wishlist_id==item.wishlist_id),None)
+    return {"wishlist_id":item.wishlist_id,"product_id":item.product_id,"product_name":_name(item.product_id,products),
+        "priority":item.priority.value,"preferred_condition":item.purchase_condition_preference.value,
+        "target_price":item.target_price,"currency":item.currency,"target_date":item.target_date.isoformat() if item.target_date else None,
+        "flags":[flag.value for flag in context.flags] if context else [],"status":item.status.value,
+        "product_url":f"/product.html?id={item.product_id}"}
+
+
+def _inventory_view(item,products):
+    return {"item_id":item.item_id,"product_id":item.product_id,"product_name":_name(item.product_id,products),
+        "purchase_date":item.purchase_date.isoformat() if item.purchase_date else None,"purchase_price":item.purchase_price,
+        "currency":item.currency,"condition_at_purchase":item.condition_at_purchase.value if item.condition_at_purchase else None,
+        "current_shutter_count":item.current_shutter_count,"warranty_until":item.warranty_until.isoformat() if item.warranty_until else None,
+        "active":item.active,"accessories":list(item.accessories),"product_url":f"/product.html?id={item.product_id}"}
+
+
+def _decision_view(item,products):
+    return {"entry_id":item.entry_id,"product_id":item.product_id,"product_name":_name(item.product_id,products),
+        "source":item.source,"observed_price":item.observed_price,"currency":item.currency,"decision":item.decision,
+        "ownership_recommendation":item.ownership_recommendation,"reasons":list(item.reasons[:3]),
+        "created_at":item.created_at.isoformat(),"listing_url":item.listing_url if item.listing_url.startswith(("http://","https://")) else None,
+        "product_url":f"/product.html?id={item.product_id}"}
 
 
 def _detail(view: ProductView, rich: bool, inventory, wishlist, decisions) -> Dict[str, object]:
@@ -162,11 +196,13 @@ def _detail(view: ProductView, rich: bool, inventory, wishlist, decisions) -> Di
 
 def _add_radar_data(data: DashboardData, store: RadarStore) -> DashboardData:
     """Add only privacy-safe, relevant live-radar fields to local views."""
-    listings = [item for item in store.load_listings() if item.active]
+    all_listings = store.load_listings()
+    listings = [item for item in all_listings if item.active]
     for item in listings:
         if item.product_id not in data.details:
             continue
         data.details[item.product_id]["listings"].append({
+            "listing_id": item.listing_id, "product_id": item.product_id,
             "source": item.source_name, "title": item.title,
             "price": item.price, "currency": item.currency,
             "country": item.source_country, "condition": item.condition,
@@ -191,8 +227,19 @@ def _add_radar_data(data: DashboardData, store: RadarStore) -> DashboardData:
              "relevant_persisted_count": item.relevant_persisted_count}
             for item in health
         ],
+        "live_listings": [_live_listing_view(item, data) for item in sorted(all_listings,key=lambda value:(value.last_seen_at,value.listing_id),reverse=True)],
     })
     return data
+
+
+def _live_listing_view(item,data):
+    product=data.details.get(item.product_id,{}).get("product")
+    return {"listing_id":item.listing_id,"product_id":item.product_id or None,
+        "product_name":product.display_name if product else "Needs review","source":item.source_name,"title":item.title,
+        "price":item.price,"currency":item.currency,"segment":item.segment,"country":item.source_country,
+        "first_seen":item.first_seen_at.isoformat(),"last_seen":item.last_seen_at.isoformat(),
+        "recognition_confidence":item.recognition_confidence,"description_confidence":item.description_confidence,
+        "defects":item.defects,"active":item.active,"url":item.url,"needs_review":not bool(item.product_id)}
 
 
 def _snapshot(product_id: str, segment: str, median: Optional[float]) -> MarketSnapshot:

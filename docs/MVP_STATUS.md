@@ -15,7 +15,8 @@ python3 -m src.radar.scheduler --once
 ## Current capabilities and limitations
 
 - Radar sources: JSON feed, RSS/Atom, CSV/JSON file import, and manually supplied URL records.
-- Subito records require URL, title, description, price, and source metadata. Automatic Subito extraction is not implemented.
+- Manual listings can be inserted through the local dashboard using URL, title, description, price, and source metadata.
+- URL-only extraction and automatic Subito page reading are not implemented.
 - eBay API integration is pending.
 - The assistant is deterministic and uses existing structured local data only. No external AI is used.
 - Dashboard and console are the only implemented notification channels. Email, Telegram, and macOS channels are inactive placeholders.

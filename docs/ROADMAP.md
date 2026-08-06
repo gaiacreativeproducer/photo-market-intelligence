@@ -116,6 +116,11 @@ Task:
 # VERSIONE 1.0
 
 Sistema completamente funzionante.
+# Post-MVP usability — Manual listing entry (completed)
+
+- Dashboard form for privacy-safe manual marketplace listings.
+- Interactive wishlist, inventory, decisions, and live-listing views.
+- Immediate local analysis, recognition, deduplication, and dashboard refresh.
 # Sprint 12 — Notification center and contextual assistant (completed)
 
 - Local deterministic notifications with delivery state and deduplication.
