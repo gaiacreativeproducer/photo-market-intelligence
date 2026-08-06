@@ -73,6 +73,12 @@ class MainTests(unittest.TestCase):
             "Break-even target used price:",
             "Ownership example: cracked lens new versus used\n",
             "Ownership recommendation: MANUAL_REVIEW\n",
+            "User memory example\n",
+            "Owned products: sony-alpha-a7-iv; sony-fe-50mm-f1-8\n",
+            "Active user wishlist:",
+            "Wishlist flags sigma-24-70mm-f2-8-dg-dn-ii-art:",
+            "Inventory gaps:",
+            "Recent decision count: 0\n",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)

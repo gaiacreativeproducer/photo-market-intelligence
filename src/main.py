@@ -22,6 +22,10 @@ from decision import DecisionEngine, MarketStatistics, NewAlternative
 from decision.explanations import format_report_summary
 from knowledge import ProductMatcher
 from market import MarketEngine
+from memory import (
+    OwnedItem, PurchaseCondition, UserPreferences, WishlistItem,
+    WishlistPriority, WishlistStatus, build_user_context,
+)
 from ownership import (
     OwnershipEngine, OwnershipHorizon, PurchaseOption, PurchaseType,
 )
@@ -276,6 +280,33 @@ def run(
                 "cracked lens new versus used", cracked_comparison
             ):
                 print(line)
+    memory_ids = {
+        "sony-alpha-a7-iv", "sony-fe-50mm-f1-8",
+        "sigma-24-70mm-f2-8-dg-dn-ii-art", "sony-fe-50mm-f1-4-gm",
+        "sony-fe-70-200mm-f2-8-gm-oss-ii",
+    }
+    if memory_ids.issubset(products_by_id):
+        memory_time = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        inventory = [
+            OwnedItem("body-a", "sony-alpha-a7-iv", date(2024, 1, 1), 1500, "EUR", PurchaseCondition.NEW, 0, 20_000, None, [], "BODY-A", "", True),
+            OwnedItem("prime-a", "sony-fe-50mm-f1-8", date(2024, 1, 1), 150, "EUR", PurchaseCondition.NEW, None, None, None, [], None, "", True),
+        ]
+        wishlist = [
+            WishlistItem("wish-standard", "sigma-24-70mm-f2-8-dg-dn-ii-art", 900, "EUR", WishlistPriority.HIGH, PurchaseCondition.EITHER, None, "Standard zoom", WishlistStatus.ACTIVE, memory_time, memory_time),
+            WishlistItem("wish-prime", "sony-fe-50mm-f1-4-gm", None, "EUR", WishlistPriority.MEDIUM, PurchaseCondition.USED, None, "Faster prime", WishlistStatus.ACTIVE, memory_time, memory_time),
+            WishlistItem("wish-tele", "sony-fe-70-200mm-f2-8-gm-oss-ii", 1800, "EUR", WishlistPriority.MEDIUM, PurchaseCondition.EITHER, None, "Telephoto zoom", WishlistStatus.ACTIVE, memory_time, memory_time),
+        ]
+        user_context = build_user_context(
+            inventory, wishlist, [], UserPreferences(target_market_country="Italy"),
+            products, date(2026, 8, 1),
+        )
+        print("User memory example")
+        print(f"Owned products: {'; '.join(user_context.owned_product_ids)}")
+        print("Active user wishlist: " + "; ".join(item.product_id for item in user_context.active_wishlist))
+        for item in user_context.wishlist_context:
+            print(f"Wishlist flags {item.product_id}: {'; '.join(flag.value for flag in item.flags)}")
+        print(f"Inventory gaps: {'; '.join(user_context.missing_system_gaps) or 'None'}")
+        print(f"Recent decision count: {len(user_context.recent_decisions)}")
     print("System ready.")
     return 0
 
