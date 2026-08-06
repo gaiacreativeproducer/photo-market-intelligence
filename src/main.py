@@ -14,6 +14,7 @@ from catalog import (
     load_product_aliases,
     load_products,
 )
+from connectors import ConnectorManager, MockConnector, SearchQuery
 
 
 ROW_COUNT_FILES = {
@@ -29,7 +30,10 @@ def count_rows(csv_path: Path) -> int:
         return sum(1 for _ in csv.DictReader(csv_file))
 
 
-def run(project_root: Optional[Path] = None) -> int:
+def run(
+    project_root: Optional[Path] = None,
+    operational_directory: Optional[Path] = None,
+) -> int:
     root = project_root or Path(__file__).resolve().parents[1]
     data_directory = root / "data"
 
@@ -46,6 +50,11 @@ def run(project_root: Optional[Path] = None) -> int:
             label: count_rows(data_directory / filename)
             for label, filename in ROW_COUNT_FILES.items()
         }
+        manager = ConnectorManager(
+            [MockConnector(retry_count=1)],
+            operational_directory or data_directory,
+        )
+        connector_run = manager.search(SearchQuery("Sony A7 IV"))
     except (CatalogValidationError, OSError, csv.Error) as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
@@ -58,6 +67,11 @@ def run(project_root: Optional[Path] = None) -> int:
     print(f"Mounts: {len(mounts)}")
     for label, count in row_counts.items():
         print(f"{label}: {count}")
+    for connector_result in connector_run.connector_results:
+        print(f"Connector: {connector_result.connector_name}")
+        print(f"Connector health: {connector_result.health.status.value}")
+        print(f"Connector listings: {len(connector_result.listings)}")
+        print(f"Connector incidents: {connector_result.incident_count}")
     print("System ready.")
     return 0
 

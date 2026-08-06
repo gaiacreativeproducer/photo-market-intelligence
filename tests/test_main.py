@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import csv
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -27,17 +26,16 @@ from catalog import (
 
 class MainTests(unittest.TestCase):
     def test_application_runs_successfully(self) -> None:
-        result = subprocess.run(
-            [sys.executable, str(PROJECT_ROOT / "src" / "main.py")],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            output = StringIO()
+            with redirect_stdout(output):
+                exit_code = main.run(
+                    PROJECT_ROOT, Path(temporary_directory)
+                )
 
-        self.assertEqual(result.returncode, 0)
+        self.assertEqual(exit_code, 0)
         self.assertEqual(
-            result.stdout,
+            output.getvalue(),
             "Photo Market Intelligence\n"
             "Status: OK\n"
             "Products: 34\n"
@@ -46,9 +44,12 @@ class MainTests(unittest.TestCase):
             "Mounts: 10\n"
             "Wishlist: 0\n"
             "Listings: 0\n"
+            "Connector: mock-marketplace\n"
+            "Connector health: HEALTHY\n"
+            "Connector listings: 1\n"
+            "Connector incidents: 0\n"
             "System ready.\n",
         )
-        self.assertEqual(result.stderr, "")
 
     def test_counts_data_rows(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -61,7 +62,7 @@ class MainTests(unittest.TestCase):
 
             output = StringIO()
             with redirect_stdout(output):
-                exit_code = main.run(root)
+                exit_code = main.run(root, data_directory)
 
             self.assertEqual(exit_code, 0)
             self.assertIn("Products: 2", output.getvalue())

@@ -1,0 +1,1 @@
+incident_id,connector_name,occurred_at,error_type,severity,message,retry_attempted,resolved,resolved_at,proposed_action
