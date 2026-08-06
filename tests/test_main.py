@@ -59,6 +59,13 @@ class MainTests(unittest.TestCase):
             "Recognition example: kit\n",
             "Recognition example: first generation\n",
             "Recognized primary product: Sigma 24-70mm f/2.8 DG DN Art\n",
+            "Market example: Sony A7 IV used market\n",
+            "Market median: 1140.00\n",
+            "Market mean: 1140.00\n",
+            "Market outliers: 1\n",
+            "Market confidence: 70\n",
+            "Listing quality average: 100.00\n",
+            "Estimated 12-month depreciation: Unavailable\n",
             "System ready.\n",
         ):
             self.assertIn(expected, application_output)

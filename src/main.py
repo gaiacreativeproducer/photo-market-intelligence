@@ -5,7 +5,7 @@ from __future__ import annotations
 import csv
 import sys
 from dataclasses import replace
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -21,6 +21,7 @@ from connectors import ConnectorManager, MockConnector, SearchQuery
 from decision import DecisionEngine, MarketStatistics, NewAlternative
 from decision.explanations import format_report_summary
 from knowledge import ProductMatcher
+from market import MarketEngine
 
 
 ROW_COUNT_FILES = {
@@ -153,6 +154,51 @@ def run(
         )
         print(f"Recognition ambiguous: {recognition.ambiguous}")
         print(f"Recognition warnings: {'; '.join(recognition.warnings) or 'None'}")
+    market_product = products_by_id.get("sony-alpha-a7-iv")
+    if market_product is not None:
+        market_created_at = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        base_listing = MockConnector(scenario="clean_with_warranty").search(
+            SearchQuery("Sony A7 IV")
+        )[0]
+        demo_prices = [1100.0, 1110.0, 1120.0, 1130.0, 1140.0,
+                       1150.0, 1160.0, 1170.0, 1180.0, 5000.0]
+        market_listings = [
+            replace(
+                base_listing,
+                external_id=f"market-{index}",
+                url=f"https://example.invalid/market-{index}",
+                price=price,
+                detected_at=market_created_at - timedelta(days=index),
+            )
+            for index, price in enumerate(demo_prices)
+        ]
+        listing_ids = [listing.external_id for listing in market_listings]
+        market_snapshot = MarketEngine(
+            "Italy", "EUR", "USED",
+            recognized_product_ids={item: market_product.id for item in listing_ids},
+            recognition_confidence={item: 100 for item in listing_ids},
+            description_confidence={item: 100 for item in listing_ids},
+            description_evidence_count={item: 5 for item in listing_ids},
+            listing_segments={item: "USED" for item in listing_ids},
+            source_countries={item: "Italy" for item in listing_ids},
+            warranty_clarity={item: True for item in listing_ids},
+            accessory_completeness={item: True for item in listing_ids},
+            created_at=market_created_at,
+        ).build_snapshot(market_product, market_listings)
+        print("Market example: Sony A7 IV used market")
+        print(f"Market median: {market_snapshot.median_price:.2f}")
+        print(f"Market mean: {market_snapshot.mean_price:.2f}")
+        print(f"Market outliers: {market_snapshot.outlier_count}")
+        print(f"Market confidence: {market_snapshot.market_confidence}")
+        print(f"Listing quality average: {market_snapshot.listing_quality_average:.2f}")
+        print(
+            "Estimated 12-month depreciation: "
+            + (
+                f"{market_snapshot.estimated_12_month_depreciation:.2f}%"
+                if market_snapshot.estimated_12_month_depreciation is not None
+                else "Unavailable"
+            )
+        )
     print("System ready.")
     return 0
 
