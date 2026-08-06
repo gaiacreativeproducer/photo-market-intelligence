@@ -109,6 +109,16 @@ class DashboardRouter:
                 return self.error(500,"manual_entry_failed","Manual listing could not be saved.")
             if self.data_loader:
                 self.data=self.data_loader();self.assistant_provider.data=self.data
+                live=next((item for item in self.data.context.get("live_listings",[]) if item["listing_id"]==result["listing_id"]),None)
+                detail=self.data.details.get(result.get("product_id"))
+                if live:result["listing_analysis"]=live.get("decision")
+                if detail:
+                    result["market_context"]=detail.get("listing_market",{})
+                    key=detail.get("default_comparison_key")
+                    result["ownership_comparison"]=detail.get("ownership_comparisons",{}).get(key) if key else None
+                    result["comparable_offer_available"]=bool(result["ownership_comparison"])
+                else:
+                    result["market_context"]={};result["ownership_comparison"]=None;result["comparable_offer_available"]=False
             return self.json(result,201 if result["status"]=="created" else 200)
         return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
 

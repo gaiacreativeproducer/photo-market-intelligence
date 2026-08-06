@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence
@@ -18,6 +19,7 @@ from ownership.models import (
     OwnershipComparison, OwnershipProjection, OwnershipRecommendation,
 )
 from radar.persistence import RadarStore
+from .listing_analysis import analyze_listings, listing_view
 
 from .view_models import DashboardData, ProductView
 
@@ -54,7 +56,7 @@ class LocalDashboardDataProvider:
         except (OSError, ValueError):
             raise
         data = _assemble("LOCAL", products, aliases, inventory, wishlist, decisions, preferences, False)
-        return _add_radar_data(data, RadarStore(paths))
+        return _add_radar_data(data, RadarStore(paths), products)
 
 
 class DemoDashboardDataProvider(LocalDashboardDataProvider):
@@ -71,7 +73,7 @@ class DemoDashboardDataProvider(LocalDashboardDataProvider):
         ]
         decisions = [DecisionHistoryEntry("demo-decision", "sony-alpha-a7-iv", "https://example.invalid/listing/a7iv", "Demo Market", "BUY_USED", 88, "PREFER_USED", 1200, "EUR", ["Below used median"], "", now)]
         data = _assemble("DEMO", products, aliases, inventory, wishlist, decisions, UserPreferences(target_market_country="Italy"), True)
-        return _add_radar_data(data, RadarStore(self.user_directory))
+        return _add_radar_data(data, RadarStore(self.user_directory), products)
 
 
 def _catalog(root: Path):
@@ -194,26 +196,29 @@ def _detail(view: ProductView, rich: bool, inventory, wishlist, decisions) -> Di
     }
 
 
-def _add_radar_data(data: DashboardData, store: RadarStore) -> DashboardData:
+def _add_radar_data(
+    data: DashboardData, store: RadarStore, products: Sequence[Product]
+) -> DashboardData:
     """Add only privacy-safe, relevant live-radar fields to local views."""
     all_listings = store.load_listings()
     listings = [item for item in all_listings if item.active]
+    products_by_id = {product.id: product for product in products}
+    analysis = analyze_listings(products, all_listings)
     for item in listings:
         if item.product_id not in data.details:
             continue
-        data.details[item.product_id]["listings"].append({
-            "listing_id": item.listing_id, "product_id": item.product_id,
-            "source": item.source_name, "title": item.title,
-            "price": item.price, "currency": item.currency,
-            "country": item.source_country, "condition": item.condition,
-            "segment": item.segment,
-            "first_seen": item.first_seen_at.isoformat(),
-            "last_seen": item.last_seen_at.isoformat(),
-            "recognition_confidence": item.recognition_confidence,
-            "description_confidence": item.description_confidence,
-            "defects": item.defects, "accessories": item.accessories,
-            "recommendation": "MONITOR", "url": item.url,
-        })
+        view = listing_view(item, products_by_id, analysis)
+        if not view["needs_review"]:
+            data.details[item.product_id]["listings"].append(view)
+    for product_id, value in analysis.items():
+        if product_id not in data.details:
+            continue
+        data.details[product_id]["listing_market"] = value["market"]
+        data.details[product_id]["listing_decisions"] = value["decisions"]
+        data.details[product_id]["ownership_comparisons"] = value["comparisons"]
+        data.details[product_id]["default_comparison_key"] = value["default_comparison_key"]
+        data.details[product_id]["comparison_options"] = value["comparison_options"]
+        _update_product_market_view(data, product_id, value["market"])
     runs = store.load_runs()
     health = store.load_health()
     latest = max(runs, key=lambda item: item.started_at) if runs else None
@@ -227,19 +232,29 @@ def _add_radar_data(data: DashboardData, store: RadarStore) -> DashboardData:
              "relevant_persisted_count": item.relevant_persisted_count}
             for item in health
         ],
-        "live_listings": [_live_listing_view(item, data) for item in sorted(all_listings,key=lambda value:(value.last_seen_at,value.listing_id),reverse=True)],
+        "live_listings": [
+            listing_view(item, products_by_id, analysis)
+            for item in sorted(all_listings,key=lambda value:(value.last_seen_at,value.listing_id),reverse=True)
+        ],
     })
     return data
 
 
-def _live_listing_view(item,data):
-    product=data.details.get(item.product_id,{}).get("product")
-    return {"listing_id":item.listing_id,"product_id":item.product_id or None,
-        "product_name":product.display_name if product else "Needs review","source":item.source_name,"title":item.title,
-        "price":item.price,"currency":item.currency,"segment":item.segment,"country":item.source_country,
-        "first_seen":item.first_seen_at.isoformat(),"last_seen":item.last_seen_at.isoformat(),
-        "recognition_confidence":item.recognition_confidence,"description_confidence":item.description_confidence,
-        "defects":item.defects,"active":item.active,"url":item.url,"needs_review":not bool(item.product_id)}
+def _update_product_market_view(data, product_id, market):
+    currencies = sorted({value["currency"] for value in market.values()})
+    if not currencies:
+        return
+    currency = next((value for value in currencies
+        if f"{value}:NEW" in market and f"{value}:USED" in market),currencies[0])
+    new = market.get(f"{currency}:NEW",{})
+    used = market.get(f"{currency}:USED",{})
+    confidence_values = [value.get("market_confidence") for value in (new,used) if value.get("market_confidence") is not None]
+    index = next((position for position,item in enumerate(data.products) if item.id==product_id),None)
+    if index is None:
+        return
+    updated = replace(data.products[index],new_median=new.get("median"),used_median=used.get("median"),
+        market_currency=currency,market_confidence=min(confidence_values) if confidence_values else None)
+    data.products[index]=updated;data.details[product_id]["product"]=updated
 
 
 def _snapshot(product_id: str, segment: str, median: Optional[float]) -> MarketSnapshot:

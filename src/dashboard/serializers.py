@@ -31,5 +31,10 @@ def detail_json(detail: Dict[str, object]) -> Dict[str, object]:
         "aliases": list(detail["aliases"]), "market": detail["market"],
         "new_vs_used": detail["new_vs_used"], "listings": detail["listings"],
         "ownership": detail["ownership"], "memory": detail["memory"],
+        "listing_market": detail.get("listing_market", {}),
+        "listing_decisions": detail.get("listing_decisions", {}),
+        "ownership_comparisons": detail.get("ownership_comparisons", {}),
+        "default_comparison_key": detail.get("default_comparison_key"),
+        "comparison_options": detail.get("comparison_options", []),
         "warnings": detail["warnings"],
     }
