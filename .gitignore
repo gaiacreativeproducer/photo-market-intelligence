@@ -1,3 +1,18 @@
+# Project-local artifacts and secrets
+.DS_Store
+**pycache**/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+Microsoft.VisualStudio.Services.VSIXPackage
+*.vsix
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
