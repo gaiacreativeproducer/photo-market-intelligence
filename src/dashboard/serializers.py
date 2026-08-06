@@ -36,5 +36,7 @@ def detail_json(detail: Dict[str, object]) -> Dict[str, object]:
         "ownership_comparisons": detail.get("ownership_comparisons", {}),
         "default_comparison_key": detail.get("default_comparison_key"),
         "comparison_options": detail.get("comparison_options", []),
+        "overall_conclusion": detail.get("overall_conclusion"),
+        "comparison_conclusions": detail.get("comparison_conclusions", {}),
         "warnings": detail["warnings"],
     }

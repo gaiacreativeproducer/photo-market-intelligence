@@ -17,6 +17,7 @@ from ownership import (
     OwnershipEngine, OwnershipHorizon, PurchaseOption, PurchaseType,
 )
 from radar.models import RadarListing
+from .conclusions import build_overall_conclusion, market_sample_label
 
 
 ACCEPTED_RECOGNITION_CONFIDENCE = 70
@@ -50,14 +51,24 @@ def analyze_listings(
         comparisons, default_key = _comparisons(
             product, compatible, connector_listings, snapshots
         )
+        market_summary = _market_summary(snapshots)
+        default_comparison = comparisons.get(default_key) if default_key else None
+        comparison_conclusions = {
+            key: build_overall_conclusion(decisions, comparison, market_summary, compatible)
+            for key, comparison in comparisons.items()
+        }
         result[product_id] = {
-            "market": _market_summary(snapshots),
+            "market": market_summary,
             "decisions": decisions,
             "comparisons": comparisons,
             "default_comparison_key": default_key,
             "comparison_options": [
                 _option_summary(item) for item in sorted(compatible, key=_offer_rank)
             ],
+            "overall_conclusion": build_overall_conclusion(
+                decisions, default_comparison, market_summary, compatible
+            ),
+            "comparison_conclusions": comparison_conclusions,
         }
     return result
 
@@ -304,6 +315,8 @@ def _market_summary(snapshots: Mapping[Tuple[str, str], MarketSnapshot]) -> Dict
             "highest": snapshot.highest_price,
             "market_confidence": snapshot.market_confidence,
             "outlier_count": snapshot.outlier_count,
+            "sample_label": market_sample_label(snapshot.valid_sample_size),
+            "price_label": "Prezzo osservato" if snapshot.valid_sample_size == 1 else "Mediana di mercato",
             "notes": list(snapshot.notes),
         }
     return values

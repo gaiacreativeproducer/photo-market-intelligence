@@ -218,6 +218,8 @@ def _add_radar_data(
         data.details[product_id]["ownership_comparisons"] = value["comparisons"]
         data.details[product_id]["default_comparison_key"] = value["default_comparison_key"]
         data.details[product_id]["comparison_options"] = value["comparison_options"]
+        data.details[product_id]["overall_conclusion"] = value["overall_conclusion"]
+        data.details[product_id]["comparison_conclusions"] = value["comparison_conclusions"]
         _update_product_market_view(data, product_id, value["market"])
     runs = store.load_runs()
     health = store.load_health()

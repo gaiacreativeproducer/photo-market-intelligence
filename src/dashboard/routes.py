@@ -117,8 +117,9 @@ class DashboardRouter:
                     key=detail.get("default_comparison_key")
                     result["ownership_comparison"]=detail.get("ownership_comparisons",{}).get(key) if key else None
                     result["comparable_offer_available"]=bool(result["ownership_comparison"])
+                    result["overall_conclusion"]=detail.get("overall_conclusion")
                 else:
-                    result["market_context"]={};result["ownership_comparison"]=None;result["comparable_offer_available"]=False
+                    result["market_context"]={};result["ownership_comparison"]=None;result["comparable_offer_available"]=False;result["overall_conclusion"]=None
             return self.json(result,201 if result["status"]=="created" else 200)
         return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
 

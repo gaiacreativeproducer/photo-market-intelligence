@@ -10,6 +10,7 @@ from urllib.request import Request,urlopen
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/"src"))
 from catalog import load_product_aliases,load_products
 from dashboard.server import create_server
+from dashboard.conclusions import build_overall_conclusion,market_sample_label
 from radar.manual_entry import ManualEntryError,ManualListingService,validate_manual_payload
 from radar.persistence import RadarStore
 from radar.pipeline import RadarPipeline
@@ -111,6 +112,21 @@ class ManualApiTests(unittest.TestCase):
         self.assertTrue(comparison["recommendation"]);self.assertTrue(comparison["reasons"])
         self.assertTrue(used_result["listing_analysis"]["reasons"])
         self.assertTrue(used_result["comparable_offer_available"])
+        overall=detail["overall_conclusion"]
+        self.assertEqual(detail["listing_decisions"][used_result["listing_id"]]["recommendation"],"BUY_NEW")
+        self.assertEqual(comparison["recommendation"],"INSUFFICIENT_DATA")
+        self.assertEqual(overall["result"],"INSUFFICIENT_DATA")
+        self.assertEqual(overall["title"],"Confronto non ancora conclusivo")
+        self.assertLessEqual(overall["confidence"],40)
+        self.assertIn("Singola offerta osservata",detail["listing_market"]["EUR:USED"]["sample_label"])
+        self.assertEqual(detail["listing_market"]["EUR:USED"]["price_label"],"Prezzo osservato")
+        self.assertIn("Confidenza del confronto proprietà",overall["confidence_basis"])
+        self.assertIn("Raccogliere dati storici di mercato",overall["suggested_checks"])
+        self.assertEqual(pair[0]["recognition_confidence"],100)
+        self.assertIn("description_confidence",pair[0])
+        self.assertIn("market_confidence",detail["listing_market"]["EUR:USED"])
+        self.assertIn("confidence",detail["listing_decisions"][used_result["listing_id"]])
+        self.assertIn("confidence",comparison)
 
     def test_honest_comparison_boundaries_and_major_defect(self):
         single=payload(url="https://example.test/z6-single",title="Nikon Z6 III usata",price=1400)
@@ -130,6 +146,16 @@ class ManualApiTests(unittest.TestCase):
             description="Autofocus non funziona.",price=1600)
         damaged_result=self.request("/api/listings/manual","POST",damaged,{"Content-Type":"application/json"})[2]
         self.assertEqual(damaged_result["ownership_comparison"]["recommendation"],"MANUAL_REVIEW")
+        self.assertEqual(damaged_result["overall_conclusion"]["result"],"MANUAL_REVIEW")
+
+    def test_conclusion_precedence_and_sample_labels(self):
+        valid=build_overall_conclusion({}, {"recommendation":"PREFER_USED","confidence":82}, {}, [])
+        self.assertEqual(valid["result"],"PREFER_USED")
+        manual=build_overall_conclusion({}, {"recommendation":"MANUAL_REVIEW","confidence":75}, {}, [])
+        self.assertEqual(manual["result"],"MANUAL_REVIEW")
+        self.assertEqual([market_sample_label(value) for value in (0,1,2,5,10)],
+            ["Nessuna osservazione di mercato affidabile","Singola offerta osservata — non è una stima di mercato affidabile",
+             "Campione di mercato molto limitato","Campione di mercato limitato","Campione di mercato"])
     def test_review_listing_and_filters(self):
         review=payload(url="https://example.test/unknown",source_name="Other",title="Camera usata",description="Buone condizioni")
         result=self.request("/api/listings/manual","POST",review,{"Content-Type":"application/json"})[2];self.assertEqual(result["status"],"needs_review")
