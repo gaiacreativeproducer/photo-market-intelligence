@@ -1,1 +1,35 @@
-id,category,brand,model,version,mount,release_year,price_new,price_used,price_good_deal,price_max_buy,liquidity_score,future_interest_score,creative_value_score,notes
+id,category,product_type,brand,model,version,native_mount,release_year,price_new,price_used,price_good_deal,price_max_buy,liquidity_score,future_interest_score,creative_value_score,notes
+sony-alpha-a7-iii,Camera,Mirrorless,Sony,Alpha A7,III,sony-e,2018,,,,,,,,Full-frame mirrorless camera
+sony-alpha-a7-iv,Camera,Mirrorless,Sony,Alpha A7,IV,sony-e,2021,,,,,,,,Full-frame mirrorless camera
+sony-alpha-a7-v,Camera,Mirrorless,Sony,Alpha A7,V,sony-e,2025,,,,,,,,Full-frame mirrorless camera
+panasonic-lumix-s5d,Camera,Mirrorless,Panasonic,Lumix S5D,,l-mount,2024,,,,,,,,Full-frame mirrorless camera with DJI LiDAR AF compatibility
+panasonic-lumix-s5-ii,Camera,Mirrorless,Panasonic,Lumix S5,II,l-mount,2023,,,,,,,,Full-frame mirrorless camera
+nikon-z6-iii,Camera,Mirrorless,Nikon,Z6,III,nikon-z,2024,,,,,,,,Full-frame mirrorless camera
+sigma-24-70mm-f2-8-dg-dn-art,Lens,Zoom,Sigma,24-70mm f/2.8 DG DN,Art,sony-e,2019,,,,,,,,Full-frame standard zoom lens
+sigma-24-70mm-f2-8-dg-dn-ii-art,Lens,Zoom,Sigma,24-70mm f/2.8 DG DN,II Art,sony-e,2024,,,,,,,,Second-generation full-frame standard zoom lens
+sigma-28-70mm-f2-8-dg-dn-contemporary,Lens,Zoom,Sigma,28-70mm f/2.8 DG DN,Contemporary,sony-e,2021,,,,,,,,Full-frame standard zoom lens
+sigma-28-105mm-f2-8-dg-dn-art,Lens,Zoom,Sigma,28-105mm f/2.8 DG DN,Art,sony-e,2024,,,,,,,,Full-frame standard zoom lens
+sony-fe-24-70mm-f2-8-gm,Lens,Zoom,Sony,FE 24-70mm f/2.8,GM,sony-e,2016,,,,,,,,Full-frame standard zoom lens
+sony-fe-24-70mm-f2-8-gm-ii,Lens,Zoom,Sony,FE 24-70mm f/2.8,GM II,sony-e,2022,,,,,,,,Second-generation full-frame standard zoom lens
+sony-fe-50mm-f1-8,Lens,Prime,Sony,FE 50mm f/1.8,,sony-e,2016,,,,,,,,Full-frame standard prime lens
+sony-fe-50mm-f1-4-gm,Lens,Prime,Sony,FE 50mm f/1.4,GM,sony-e,2023,,,,,,,,Full-frame standard prime lens
+sony-fe-50mm-f1-2-gm,Lens,Prime,Sony,FE 50mm f/1.2,GM,sony-e,2021,,,,,,,,Full-frame standard prime lens
+sigma-50mm-f1-4-dg-dn-art,Lens,Prime,Sigma,50mm f/1.4 DG DN,Art,sony-e,2023,,,,,,,,Full-frame standard prime lens
+sony-fe-85mm-f1-8,Lens,Prime,Sony,FE 85mm f/1.8,,sony-e,2017,,,,,,,,Full-frame portrait prime lens
+sigma-85mm-f1-4-dg-dn-art,Lens,Prime,Sigma,85mm f/1.4 DG DN,Art,sony-e,2020,,,,,,,,Full-frame portrait prime lens
+viltrox-af-85mm-f1-8,Lens,Prime,Viltrox,AF 85mm f/1.8,,sony-e,2018,,,,,,,,Autofocus portrait prime lens
+tamron-35-150mm-f2-2-8-di-iii-vxd,Lens,Zoom,Tamron,35-150mm f/2-2.8 Di III VXD,,sony-e,2021,,,,,,,,Full-frame standard-to-telephoto zoom lens
+sigma-70-200mm-f2-8-dg-dn-os-sports,Lens,Zoom,Sigma,70-200mm f/2.8 DG DN OS,Sports,sony-e,2023,,,,,,,,Full-frame telephoto zoom lens
+sony-fe-70-200mm-f2-8-gm-oss-ii,Lens,Zoom,Sony,FE 70-200mm f/2.8 GM OSS,II,sony-e,2021,,,,,,,,Second-generation full-frame telephoto zoom lens
+dzofilm-vespid-prime-50mm-t2-1,Cinema Lens,Prime,DZOFilm,Vespid Prime 50mm T2.1,,pl,2020,,,,,,,,Full-frame cinema prime lens
+dzofilm-catta-35-80mm-t2-9,Cinema Lens,Zoom,DZOFilm,Catta 35-80mm T2.9,,multiple,2021,,,,,,,,Full-frame cinema zoom available in multiple mounts
+sirui-night-walker-35mm-t1-2-s35,Cinema Lens,Prime,Sirui,Night Walker 35mm T1.2,S35,multiple,2023,,,,,,,,Super 35 cinema prime available in multiple mounts
+sirui-saturn-50mm-t2-9-1-6x-anamorphic,Cinema Lens,Anamorphic,Sirui,Saturn 50mm T2.9,1.6x Anamorphic,multiple,2023,,,,,,,,Full-frame anamorphic cinema prime available in multiple mounts
+contax-carl-zeiss-planar-85mm-f1-4-aeg,Lens,Prime,Contax Carl Zeiss,Planar 85mm f/1.4,AEG,contax-yashica,1975,,,,,,,,Vintage manual-focus portrait prime lens
+canon-fd-50mm-f1-2-l,Lens,Prime,Canon,FD 50mm f/1.2,L,canon-fd,1980,,,,,,,,Vintage manual-focus standard prime lens
+minolta-rokkor-58mm-f1-2,Lens,Prime,Minolta,Rokkor 58mm f/1.2,,minolta-sr,1968,,,,,,,,Vintage manual-focus standard prime lens
+helios-44-2-58mm-f2,Lens,Prime,Helios,44-2 58mm f/2,,m42,1967,,,,,,,,Vintage manual-focus standard prime lens
+sony-hvl-f60rm2,Flash,External Flash,Sony,HVL-F60RM2,,none,2021,,,,,,,,Radio-controlled external flash
+sony-vg-c4em,Grip,Battery Grip,Sony,VG-C4EM,,none,2019,,,,,,,,Vertical battery grip
+dji-rs-4,Gimbal,Camera Stabilizer,DJI,RS 4,,none,2024,,,,,,,,Camera stabilizer
+dji-mic-first-generation-dual-transmitter-kit,Audio,Wireless Microphone,DJI,Mic,First Generation Dual Transmitter Kit,none,2021,,,,,,,,Wireless microphone kit with two transmitters

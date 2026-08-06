@@ -1,0 +1,11 @@
+id,name,mount_type,notes
+sony-e,Sony E,Lens mount,Sony mirrorless camera mount
+l-mount,L-Mount,Lens mount,Leica Camera initiated mirrorless lens mount
+nikon-z,Nikon Z,Lens mount,Nikon mirrorless camera mount
+canon-fd,Canon FD,Lens mount,Canon manual-focus SLR lens mount
+contax-yashica,Contax/Yashica,Lens mount,Contax and Yashica manual-focus SLR lens mount
+minolta-sr,Minolta SR,Lens mount,Minolta manual-focus SLR lens mount
+m42,M42,Lens mount,42 millimeter screw lens mount
+pl,PL,Cinema lens mount,Positive Lock cinema lens mount
+multiple,Multiple,Mount designation,Product is available in multiple native mounts
+none,None,Not applicable,Product does not use an interchangeable lens mount

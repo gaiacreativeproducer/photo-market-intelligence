@@ -1,0 +1,55 @@
+alias,product_id,alias_type,notes
+a7 iii,sony-alpha-a7-iii,common_name,Common abbreviated model name
+a7iii,sony-alpha-a7-iii,compact_name,Compact model name
+ilce-7m3,sony-alpha-a7-iii,model_code,Sony model code
+a7 iv,sony-alpha-a7-iv,common_name,Common abbreviated model name
+a7iv,sony-alpha-a7-iv,compact_name,Compact model name
+ilce-7m4,sony-alpha-a7-iv,model_code,Sony model code
+a7 v,sony-alpha-a7-v,common_name,Common abbreviated model name
+a7v,sony-alpha-a7-v,compact_name,Compact model name
+ilce-7m5,sony-alpha-a7-v,model_code,Sony model code
+lumix s5d,panasonic-lumix-s5d,common_name,Common product name
+s5d,panasonic-lumix-s5d,compact_name,Compact model name
+lumix s5 ii,panasonic-lumix-s5-ii,common_name,Common product name
+s5ii,panasonic-lumix-s5-ii,compact_name,Compact model name
+dc-s5m2,panasonic-lumix-s5-ii,model_code,Panasonic model code
+z6 iii,nikon-z6-iii,common_name,Common abbreviated model name
+z6iii,nikon-z6-iii,compact_name,Compact model name
+sigma 24-70 art,sigma-24-70mm-f2-8-dg-dn-art,common_name,Common abbreviated lens name
+sigma 24-70 dg dn,sigma-24-70mm-f2-8-dg-dn-art,short_name,Short lens name
+sigma 24-70 ii art,sigma-24-70mm-f2-8-dg-dn-ii-art,common_name,Common abbreviated lens name
+sigma 24-70 dg dn ii,sigma-24-70mm-f2-8-dg-dn-ii-art,short_name,Short lens name
+sigma 28-70 contemporary,sigma-28-70mm-f2-8-dg-dn-contemporary,common_name,Common abbreviated lens name
+sigma 28-70 dg dn,sigma-28-70mm-f2-8-dg-dn-contemporary,short_name,Short lens name
+sigma 28-105 art,sigma-28-105mm-f2-8-dg-dn-art,common_name,Common abbreviated lens name
+sigma 28-105 dg dn,sigma-28-105mm-f2-8-dg-dn-art,short_name,Short lens name
+sony 24-70 gm,sony-fe-24-70mm-f2-8-gm,common_name,Common abbreviated lens name
+sel2470gm,sony-fe-24-70mm-f2-8-gm,model_code,Sony model code
+sony 24-70 gm ii,sony-fe-24-70mm-f2-8-gm-ii,common_name,Common abbreviated lens name
+sel2470gm2,sony-fe-24-70mm-f2-8-gm-ii,model_code,Sony model code
+sony fe 50 1.8,sony-fe-50mm-f1-8,common_name,Common abbreviated lens name
+sel50f18f,sony-fe-50mm-f1-8,model_code,Sony model code
+sony 50 1.4 gm,sony-fe-50mm-f1-4-gm,common_name,Common abbreviated lens name
+sel50f14gm,sony-fe-50mm-f1-4-gm,model_code,Sony model code
+sony 50 1.2 gm,sony-fe-50mm-f1-2-gm,common_name,Common abbreviated lens name
+sel50f12gm,sony-fe-50mm-f1-2-gm,model_code,Sony model code
+sigma 50 1.4 dg dn,sigma-50mm-f1-4-dg-dn-art,common_name,Common abbreviated lens name
+sigma 50 dg dn art,sigma-50mm-f1-4-dg-dn-art,short_name,Short lens name
+sony 85 1.8,sony-fe-85mm-f1-8,common_name,Common abbreviated lens name
+sel85f18,sony-fe-85mm-f1-8,model_code,Sony model code
+sigma 85 1.4 dg dn,sigma-85mm-f1-4-dg-dn-art,common_name,Common abbreviated lens name
+sigma 85 dg dn art,sigma-85mm-f1-4-dg-dn-art,short_name,Short lens name
+tamron 35-150 vxd,tamron-35-150mm-f2-2-8-di-iii-vxd,common_name,Common abbreviated lens name
+tamron a058,tamron-35-150mm-f2-2-8-di-iii-vxd,model_code,Tamron model code
+sigma 70-200 dg dn sports,sigma-70-200mm-f2-8-dg-dn-os-sports,common_name,Common abbreviated lens name
+sigma 70-200 f2.8 sports,sigma-70-200mm-f2-8-dg-dn-os-sports,short_name,Short lens name
+sony 70-200 gm ii,sony-fe-70-200mm-f2-8-gm-oss-ii,common_name,Common abbreviated lens name
+sel70200gm2,sony-fe-70-200mm-f2-8-gm-oss-ii,model_code,Sony model code
+vespid 50mm,dzofilm-vespid-prime-50mm-t2-1,common_name,Common abbreviated cinema lens name
+vespid 50 t2.1,dzofilm-vespid-prime-50mm-t2-1,short_name,Short cinema lens name
+catta 35-80,dzofilm-catta-35-80mm-t2-9,common_name,Common abbreviated cinema lens name
+catta zoom 35-80,dzofilm-catta-35-80mm-t2-9,short_name,Short cinema lens name
+night walker 35mm,sirui-night-walker-35mm-t1-2-s35,common_name,Common abbreviated cinema lens name
+sirui 35mm t1.2,sirui-night-walker-35mm-t1-2-s35,short_name,Short cinema lens name
+saturn 50mm,sirui-saturn-50mm-t2-9-1-6x-anamorphic,common_name,Common abbreviated cinema lens name
+sirui 50mm 1.6x,sirui-saturn-50mm-t2-9-1-6x-anamorphic,short_name,Short anamorphic lens name
