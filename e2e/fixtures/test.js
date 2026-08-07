@@ -7,9 +7,13 @@ const ALLOWED_CONSOLE_MESSAGES = [];
 const test = base.extend({
   page: async ({ page }, use, testInfo) => {
     const problems = [];
+    const expectedProblems = [];
+    page.allowConsoleError = pattern => expectedProblems.push({ pattern, seen: false });
     page.on("pageerror", error => problems.push(`pageerror: ${error.message}`));
     page.on("console", message => {
       if (message.type() !== "error") return;
+      const expected = expectedProblems.find(item => item.pattern.test(message.text()));
+      if (expected) { expected.seen = true; return; }
       if (!ALLOWED_CONSOLE_MESSAGES.some(pattern => pattern.test(message.text()))) {
         problems.push(`console.error: ${message.text()}`);
       }
@@ -21,6 +25,8 @@ const test = base.extend({
       }
     });
     await use(page);
+    const missingExpected = expectedProblems.filter(item => !item.seen).map(item => String(item.pattern));
+    expect(missingExpected, "expected console errors were not observed").toEqual([]);
     if (problems.length) {
       await testInfo.attach("browser-errors.txt", {
         body: Buffer.from(problems.join("\n")), contentType: "text/plain",

@@ -10,7 +10,7 @@ test.describe("ACCESSIBILITY, MOBILE, AND COARSE PERFORMANCE", () => {
     await expect(page.getByLabel("Cerca prodotto")).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Principale" })).toBeVisible();
     await page.goto("/compare.html?ids=sony-alpha-a7-iv,nikon-z6-iii");
-    await expect(page.locator("table caption")).toHaveText("Selected products");
+    await expect(page.locator("table caption")).toHaveText("Prodotti selezionati");
     expect(await page.locator("table th").count()).toBeGreaterThan(2);
   });
 
@@ -53,7 +53,7 @@ test.describe("ACCESSIBILITY, MOBILE, AND COARSE PERFORMANCE", () => {
     await expect(page.getByRole("heading", { name: "Trova il prodotto e scegli l’offerta migliore" })).toBeVisible();
     await page.getByLabel("Cerca prodotto").fill("A7 IV");
     await page.getByRole("button", { name: "Cerca", exact: true }).click();
-    await page.locator(".product-card").filter({ hasText: "Sony Alpha A7 IV" }).getByRole("link", { name: "Apri workspace" }).click();
+    await page.locator(".product-card").filter({ hasText: "Sony Alpha A7 IV" }).getByRole("link", { name: "Apri prodotto" }).click();
     await expect(page.locator("#workspace-header")).toBeVisible();
     await page.getByRole("button", { name: "Assistente" }).click();
     await expect(page.locator("#assistant-panel")).toBeVisible();

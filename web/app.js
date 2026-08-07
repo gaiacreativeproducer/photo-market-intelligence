@@ -47,7 +47,7 @@ function productCard(product) {
     if (product.wishlist) badges.append(text("span", `Wishlist ${product.wishlist_priority || ""}`));
     article.append(badges);
     const actions = text("div", "", "actions");
-    const open = text("a", "Apri workspace");
+    const open = text("a", "Apri prodotto");
     open.href = `/product.html?id=${encodeURIComponent(product.id)}`;
     const compare = text("button", selectedProducts.has(product.id) ? "Rimuovi confronto prodotto" : "Confronta prodotti");
     compare.type = "button";
@@ -71,11 +71,12 @@ async function loadProducts() {
     if (byId("confidence").value) params.set("confidence_min", byId("confidence").value);
     if (byId("search").value) params.set("q", byId("search").value);
     if (["newest", "confidence"].includes(byId("sort").value)) params.set("order", "desc");
-    const response = await fetch(`/api/products?${params}`);
-    const data = await response.json();
     const grid = byId("products");
+    let data;
+    try { data = await requestJson(`/api/products?${params}`); }
+    catch (error) { byId("message").textContent = error.message; return; }
+    if (!Array.isArray(data.products)) { byId("message").textContent = "Il servizio ha restituito dati non validi."; return; }
     grid.replaceChildren();
-    if (!response.ok) { byId("message").textContent = data.error.message; return; }
     byId("message").textContent = data.count ? `${data.count} prodotti` : "Nessun prodotto corrisponde alla ricerca.";
     data.products.forEach(product => grid.append(productCard(product)));
     if (data.filters) [["category", data.filters.categories], ["brand", data.filters.brands], ["mount", data.filters.mounts]].forEach(([id, values]) => {
@@ -94,6 +95,34 @@ function externalLink(url, label = "Apri originale") {
         link.rel = "noopener noreferrer";
         return link;
     } catch (error) { return null; }
+}
+
+function internalLink(url, label = "Apri prodotto") {
+    try {
+        const parsed = new URL(url, location.origin);
+        if (parsed.origin !== location.origin) return null;
+        const link = text("a", label);
+        link.href = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+        return link;
+    } catch (error) { return null; }
+}
+
+async function requestJson(url) {
+    let response;
+    try {
+        response = await fetch(url);
+    } catch (error) {
+        throw new Error("Impossibile contattare il servizio locale.");
+    }
+    let data = null;
+    try { data = await response.json(); } catch (error) { /* handled below */ }
+    if (!response.ok) {
+        const message = data && data.error && typeof data.error.message === "string"
+            ? data.error.message : `Richiesta non riuscita (${response.status}).`;
+        throw new Error(message);
+    }
+    if (!data || typeof data !== "object") throw new Error("Il servizio ha restituito una risposta non valida.");
+    return data;
 }
 
 function inboxFilters() {
@@ -120,7 +149,12 @@ function inboxFilters() {
     form.append(submit);
     form.addEventListener("submit", event => {
         event.preventDefault();
-        openDataView("live", new URLSearchParams(new FormData(form)));
+        const params = new URLSearchParams();
+        new FormData(form).forEach((value, name) => {
+            const normalized = String(value).trim();
+            if (normalized) params.set(name, normalized);
+        });
+        openDataView("live", params);
     });
     return form;
 }
@@ -134,7 +168,7 @@ function inboxCard(item) {
         if (value != null) row.append(text("p", `${label}: ${value}`));
     });
     if (item.product_url) {
-        const product = text("a", `Apri workspace · ${item.product_name}`);
+        const product = text("a", `Apri prodotto · ${item.product_name}`);
         product.href = item.product_url;
         row.append(product);
     }
@@ -180,7 +214,9 @@ function renderGeneric(root, items) {
         row.append(text("h3", item.product_name || item.title || "Elemento"));
         const destination = item.product_url || item.url || item.listing_url;
         if (destination) {
-            const link = externalLink(destination, item.product_url ? "Apri workspace" : "Apri originale");
+            const link = item.product_url
+                ? internalLink(destination, "Apri prodotto")
+                : externalLink(destination, "Apri originale");
             if (link) row.append(link);
         }
         root.append(row);
@@ -199,17 +235,29 @@ async function openDataView(kind, params = null) {
     const filters = byId("data-filters");
     if (kind === "live" && !params) filters.replaceChildren(inboxFilters());
     else if (kind !== "live") filters.replaceChildren();
-    const query = params ? `?${params}` : "";
-    const data = await (await fetch(config[1] + query)).json();
     const root = byId("data-list");
+    root.querySelector(".data-error")?.remove();
+    const query = params && params.toString() ? `?${params}` : "";
+    let data;
+    try {
+        data = await requestJson(config[1] + query);
+        if (!Array.isArray(data.items)) throw new Error("Il servizio ha restituito dati non validi.");
+    } catch (error) {
+        const state = text("p", error.message || "Impossibile caricare i dati.", "data-error");
+        state.setAttribute("role", "alert");
+        root.prepend(state);
+        return;
+    }
     root.replaceChildren();
     if (!data.items.length) { root.append(text("p", "Nessun elemento disponibile.")); return; }
     if (kind === "live") renderInbox(root, data.items); else renderGeneric(root, data.items);
 }
 
 async function loadContext() {
-    const data = await (await fetch("/api/context")).json();
-    const status = await (await fetch("/api/status")).json();
+    let data;
+    let status;
+    try { [data, status] = await Promise.all([requestJson("/api/context"), requestJson("/api/status")]); }
+    catch (error) { byId("system-state").textContent = error.message; return; }
     byId("wishlist-count").textContent = String(data.active_wishlist_count);
     byId("owned-count").textContent = String(data.owned_product_ids.length);
     byId("decision-count").textContent = String(data.recent_decision_count);
@@ -243,9 +291,12 @@ byId("assistant-form").addEventListener("submit", async event => {
 });
 
 async function loadNotifications() {
-    const data = await (await fetch("/api/notifications")).json();
-    byId("notification-count").textContent = String(data.unread_count);
     const root = byId("notification-list");
+    let data;
+    try { data = await requestJson("/api/notifications"); }
+    catch (error) { root.replaceChildren(text("p", error.message, "data-error")); return; }
+    if (!Array.isArray(data.notifications)) { root.replaceChildren(text("p", "Il servizio ha restituito dati non validi.", "data-error")); return; }
+    byId("notification-count").textContent = String(data.unread_count);
     root.replaceChildren();
     data.notifications.forEach(item => {
         const row = text("article", "");

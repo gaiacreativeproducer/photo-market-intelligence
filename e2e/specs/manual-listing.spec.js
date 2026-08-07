@@ -34,7 +34,7 @@ test.describe("MANUAL LISTING AND PRODUCT ASSOCIATION", () => {
     await page.locator("header").getByRole("button", { name: "Annunci", exact: true }).click();
     const card = page.locator("#data-list .listing-card").filter({ hasText: "Mirrorless camera body" });
     await card.getByRole("button", { name: "Associa prodotto" }).click();
-    await page.getByLabel("Cerca nel catalogo").fill("A7 IV");
+    await page.locator("#association-search").fill("A7 IV");
     await page.locator("#association-search-form").getByRole("button", { name: "Cerca" }).click();
     await page.locator(".association-candidate").filter({ hasText: "Sony Alpha A7 IV" }).getByRole("button", { name: "Associa questo prodotto" }).click();
     await expect(page.locator("#association-status")).toContainText("Annuncio associato a Sony Alpha A7 IV");

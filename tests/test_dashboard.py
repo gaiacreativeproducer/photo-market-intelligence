@@ -157,7 +157,7 @@ class DashboardTests(unittest.TestCase):
 
     def test_root_and_exact_static_allowlist(self) -> None:
         status, _, body = self.get("/")
-        self.assertEqual(status, 200); self.assertIn(b"Search catalog", body)
+        self.assertEqual(status, 200); self.assertIn("Cerca nel catalogo".encode(), body)
         for path in ("/index.html", "/product.html", "/compare.html", "/app.js", "/product.js", "/compare.js", "/styles.css"):
             self.assertEqual(self.get(path)[0], 200)
 

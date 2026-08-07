@@ -177,7 +177,7 @@ function renderOwnershipReport(root, value, conclusion) {
         root.append(node("h3", conclusion.title));
         add(root, "Confidenza complessiva", `${conclusion.confidence}%`);
     }
-    add(root, "Risultato Ownership", value.recommendation);
+    add(root, "Risultato nuovo vs usato", value.recommendation);
     add(root, "Risparmio nominale", money(value.nominal_saving, value.currency));
     add(root, "Risparmio", value.saving_percentage == null ? null : `${value.saving_percentage.toFixed(1)}%`);
     add(root, "Prezzo di pareggio usato", money(value.break_even_used_price, value.currency));

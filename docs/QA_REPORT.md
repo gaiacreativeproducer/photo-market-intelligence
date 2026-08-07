@@ -70,3 +70,22 @@ Recommended priority: **P1**, because the default filter action creates an uncau
 2. Rerun the unchanged failing scenario until the suite reaches 54/54.
 3. Consider keeping internal workspace navigation in the same tab unless a new tab is an explicit UX decision.
 4. Standardize visible interface language in a dedicated UX pass.
+
+## QA Fix Pass 1 remediation
+
+Date: 2026-08-07
+
+The original findings above are retained as the audit history. This remediation pass produced the following current state:
+
+| Finding | Result | Verification |
+| --- | --- | --- |
+| P1 blank Annunci numeric filters | **FIXED** | Empty optional fields are omitted, text filters are trimmed, and the original failing browser scenario now passes. Backend validation still rejects non-numeric values with HTTP 400. |
+| Unsafe API error rendering | **FIXED** | Dashboard data loaders validate HTTP status and payload shape, show readable errors, preserve existing panel content, and recover after a later successful request. |
+| Internal ProductWorkspace links opening new tabs | **FIXED** | Wishlist, Corredo, Decisioni, and Annunci product links remain in the same tab. External marketplace links still use `target="_blank"` and `rel="noopener noreferrer"`. |
+| Mixed visible interface language | **FIXED for audited surfaces** | Existing Home, catalog filters, panels, manual-entry labels, product actions, and product-comparison labels are consistently Italian. Product names, marketplace names, technical terms, and API enums remain unchanged. |
+
+Regression results:
+
+- Python: **257 passed, 0 failed**.
+- Playwright Chromium: **60 passed, 0 failed, 0 skipped**.
+- Unexpected console errors or page exceptions: **0**. Deliberate HTTP 400/500 error-rendering scenarios explicitly assert their expected network-console messages.
