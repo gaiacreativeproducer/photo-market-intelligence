@@ -37,13 +37,13 @@ def execute_once(root: Path, dry_run: bool = False, source_ids=None,
     products = load_products(root / "data" / "products.csv")
     aliases = load_product_aliases(root / "data" / "product_aliases.csv", products)
     sources = load_sources(user / "radar_sources.json")
+    watches = load_watches(user / "radar_wishlist.csv", products, sources)
     if source_ids:
         requested = set(source_ids)
         unknown = requested - {source.source_id for source in sources}
         if unknown:
             raise ValueError(f"unknown source ID: {sorted(unknown)[0]}")
         sources = [source for source in sources if source.source_id in requested]
-    watches = load_watches(user / "radar_wishlist.csv", products, sources)
     return RadarPipeline(RadarStore(user), products, aliases,
                          user_directory=user,
                          import_directory=import_directory or user / "imports",

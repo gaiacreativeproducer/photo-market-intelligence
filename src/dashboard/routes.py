@@ -34,7 +34,7 @@ class DashboardRouter:
     def __init__(self, data: DashboardData, web_directory: Path,
                  notification_store=None, assistant_provider=None,
                  manual_service=None, data_loader=None,
-                 association_service=None) -> None:
+                 association_service=None, ebay_refresh_service=None) -> None:
         self.data = data
         self.web_directory = web_directory
         self.notification_store = notification_store
@@ -42,6 +42,7 @@ class DashboardRouter:
         self.manual_service = manual_service
         self.data_loader = data_loader
         self.association_service = association_service
+        self.ebay_refresh_service = ebay_refresh_service
 
     def dispatch(self, raw_path: str) -> Tuple[int, str, bytes]:
         parsed = urlsplit(raw_path)
@@ -81,6 +82,27 @@ class DashboardRouter:
 
     def dispatch_post(self, raw_path: str, value: Dict[str, object]):
         path = unquote(urlsplit(raw_path).path)
+        ebay_refresh = re.fullmatch(r"/api/products/([a-z0-9-]+)/ebay-refresh", path)
+        if ebay_refresh:
+            if value:
+                return self.error(400, "invalid_body", "eBay refresh body must be empty.")
+            try:
+                result = self.ebay_refresh_service.refresh(ebay_refresh.group(1))
+            except KeyError:
+                return self.error(404, "not_found", "Product not found.")
+            except Exception as error:
+                from dashboard.ebay_refresh import EbayRefreshError, EbayRefreshFailure
+                from connectors.models import ConnectorError
+                if isinstance(error, EbayRefreshError):
+                    return self.error(409, "ebay_not_configured", str(error))
+                if isinstance(error, EbayRefreshFailure):
+                    return self.error(502, "ebay_connector_error", str(error))
+                if isinstance(error, ConnectorError):
+                    return self.error(502, "ebay_connector_error", error.message)
+                return self.error(502, "ebay_refresh_failed", "eBay refresh could not be completed.")
+            self._reload_data()
+            result["workspace"] = detail_json(self.data.details[ebay_refresh.group(1)])["workspace"]
+            return self.json(result)
         association = re.fullmatch(r"/api/listings/([a-f0-9]{32})/product", path)
         if association:
             if set(value) != {"product_id"}:

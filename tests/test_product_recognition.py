@@ -152,6 +152,50 @@ class ProductRecognitionTests(unittest.TestCase):
         self.assertEqual(result.candidates, [])
         self.assertEqual(result.unmatched_terms, [])
 
+    def test_camera_compatibility_accessory_matrix_is_not_camera_body(self) -> None:
+        titles = (
+            "underwater housing for Sony A7 IV",
+            "cage for Sony A7 IV",
+            "battery for Sony A7 IV",
+            "charger for Sony A7 IV",
+            "screen protector Sony A7 IV",
+            "camera strap compatible with Sony A7 IV",
+            "L bracket for Sony A7 IV",
+            "dummy battery Sony A7 IV",
+            "grip for Sony A7 IV",
+            "manual/book for Sony A7 IV",
+            "box only Sony A7 IV",
+            "scafandro subacqueo per Sony A7 IV",
+            "custodia compatibile con Sony A7 IV",
+        )
+        for title in titles:
+            with self.subTest(title=title):
+                result = self.matcher.recognize(title, "")
+                self.assertNotEqual(result.product_id, "sony-alpha-a7-iv")
+                self.assertTrue(any(
+                    "compatibility reference" in warning
+                    for warning in result.warnings
+                ))
+
+    def test_supported_accessory_wins_over_camera_compatibility_reference(self) -> None:
+        result = self.matcher.recognize(
+            "Sony VG-C4EM battery grip for Sony A7 IV", ""
+        )
+        self.assertEqual(result.product_id, "sony-vg-c4em")
+        self.assertEqual(result.recognized_category, "Grip")
+
+    def test_camera_body_and_included_accessory_remain_camera(self) -> None:
+        for title in (
+            "Sony A7 IV body with battery",
+            "Sony A7 IV corpo macchina con caricatore",
+            "Sony Alpha a7 IV ILCE-7M4",
+        ):
+            with self.subTest(title=title):
+                self.assertEqual(
+                    self.matcher.recognize(title, "").product_id,
+                    "sony-alpha-a7-iv",
+                )
+
     def test_focal_length_and_aperture_are_not_products(self) -> None:
         result = self.matcher.recognize("Obiettivo 24-70mm f/2.8 anno 2024", "")
         self.assertIsNone(result.product_id)

@@ -24,6 +24,7 @@ class MarketEvidence:
     landed_costs: Mapping[str, float]
     warranty_clarity: Mapping[str, bool]
     accessory_completeness: Mapping[str, bool]
+    statistical_eligibility: Mapping[str, bool] = None
 
 
 def listing_quality(listing: Listing, evidence: MarketEvidence) -> int:
@@ -103,6 +104,8 @@ def _observation(
         reason = ExclusionReason.SEGMENT_MISMATCH
     elif source_country is None:
         reason = ExclusionReason.INSUFFICIENT_INFORMATION
+    elif not (evidence.statistical_eligibility or {}).get(listing_id, True):
+        reason = ExclusionReason.UNSUPPORTED_BUYING_OPTION
     elif not domestic and landed_cost is None:
         reason = ExclusionReason.LANDED_COST_UNKNOWN
     elif any(defect.severity in {"major", "critical"} for defect in listing.defects):

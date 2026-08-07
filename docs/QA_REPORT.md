@@ -89,3 +89,43 @@ Regression results:
 - Python: **257 passed, 0 failed**.
 - Playwright Chromium: **60 passed, 0 failed, 0 skipped**.
 - Unexpected console errors or page exceptions: **0**. Deliberate HTTP 400/500 error-rendering scenarios explicitly assert their expected network-console messages.
+
+## eBay Browse Connector V1 coverage
+
+The official-API integration is tested with deterministic injected HTTP responses; CI makes no live eBay calls.
+
+- OAuth client-credentials request, in-memory cache, expiry refresh, Sandbox/Production hosts, and sanitized failures.
+- Strict five-marketplace configuration, `X-EBAY-C-MARKETPLACE-ID`, keyword search, pagination, 50-result default, and 200-result cap.
+- Condition, refurbished/pre-owned, fixed-price, auction, shipping, currency, and source-country normalization.
+- Auctions remain visible but are excluded from primary market-price statistics.
+- Lazy item detail, item-ID deduplication, Radar relevance, ProductWorkspace facts, and source failure isolation.
+- HTTP 429 `Retry-After` handling uses bounded, injectable delays.
+- ProductWorkspace refresh is explicitly user-triggered, updates the workspace without navigation or server restart, and renders sanitized connector errors.
+- Browser fixtures verify successful refresh, eBay source facts, Production authorization messaging, and absence of secrets.
+
+Live Sandbox behavior remains dependent on developer credentials and eBay Sandbox inventory. `scripts/test_ebay_connection.py` is an optional sanitized local check and is not part of CI.
+
+Regression results for this connector pass:
+
+- Python: **271 passed, 0 failed**.
+- Playwright Chromium: **62 passed, 0 failed, 0 skipped**.
+- Unexpected console errors or page exceptions: **0**. The mocked HTTP 502 authorization scenario explicitly asserts its expected browser network diagnostic.
+
+## eBay Production-shaped relevance validation
+
+Sanitized Production-shaped fixtures verify broad discovery followed by strict downstream identity validation:
+
+- Two Sony A7 IV camera-body offers are confidently recognized, persisted, and grouped in the camera ProductWorkspace.
+- An underwater housing that only references Sony A7 IV for compatibility is ignored and does not affect offer counts, lowest prices, market medians, listing decisions, or ownership comparisons.
+- A deterministic English/Italian matrix covers housings, cages, batteries, chargers, protectors, straps, brackets, grips, manuals, covers, and box-only listings.
+- Catalog-supported accessories retain their own product identity instead of being attached to the compatible camera.
+- Product watches require the recognized `product_id`; their discovery query text cannot establish identity.
+- Refresh diagnostics expose retrieved, recognized, persisted-relevant, ignored accessory/unmatched, and needs-review counts without raw payloads.
+
+Regression results:
+
+- Python: **276 passed, 0 failed**.
+- Playwright Chromium: **62 passed, 0 failed, 0 skipped**.
+- Unexpected console errors or page exceptions: **0**.
+
+The requested live Production smoke could not run in the automated process because `PMI_EBAY_CLIENT_ID`, `PMI_EBAY_CLIENT_SECRET`, and `PMI_EBAY_ENVIRONMENT` were absent and no local `.env` existed. The smoke exited before OAuth and exposed no secrets.

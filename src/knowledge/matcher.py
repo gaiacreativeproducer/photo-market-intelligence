@@ -97,6 +97,9 @@ class ProductMatcher:
         product_id, ambiguous = self._apply_listing_structure(
             source, title, candidates, product_id, ambiguous, warnings
         )
+        product_id, ambiguous = self._apply_primary_sale_identity(
+            title, candidates, product_id, ambiguous, warnings
+        )
         if version_conflict:
             product_id = None
             ambiguous = True
@@ -172,6 +175,14 @@ class ProductMatcher:
             for variant in search_variants(form):
                 for span in normalized_occurrences(normalized_source, variant):
                     if self._excluded_context(source, span):
+                        continue
+                    if (
+                        product.version and form != full_name
+                        and self._explicit_version_near(source, span)
+                        and not self._version_supported(
+                            product, source[span[0]:min(len(source), span[1] + 24)]
+                        )
+                    ):
                         continue
                     self._record(
                         evidence, product, form, source, span, "exact_model",
@@ -414,6 +425,68 @@ class ProductMatcher:
             return cameras[0].product_id, False
         return product_id, ambiguous
 
+    def _apply_primary_sale_identity(
+        self, title: str, candidates: Sequence[ProductMatchCandidate],
+        product_id: Optional[str], ambiguous: bool, warnings: List[str],
+    ) -> Tuple[Optional[str], bool]:
+        """Do not treat a compatibility reference as the item being sold."""
+        selected = self.products_by_id.get(product_id) if product_id else None
+        if selected is None or selected.category != "Camera":
+            return product_id, ambiguous
+        camera = next(
+            (item for item in candidates if item.product_id == product_id), None
+        )
+        if camera is None or not self._accessory_only_title(title, camera):
+            return product_id, ambiguous
+        supported_accessories = [
+            item for item in candidates
+            if item.score >= 70
+            and self.products_by_id[item.product_id].category
+            in {"Flash", "Grip", "Gimbal", "Audio"}
+        ]
+        warnings.append(
+            "Camera model is a compatibility reference, not the primary item for sale."
+        )
+        if supported_accessories:
+            return supported_accessories[0].product_id, False
+        return None, False
+
+    @staticmethod
+    def _accessory_only_title(
+        title: str, camera: ProductMatchCandidate
+    ) -> bool:
+        normalized = normalize_text(title)
+        accessory_terms = (
+            "underwater housing", "housing", "cage", "case", "battery",
+            "charger", "screen protector", "protector", "camera strap",
+            "strap", "l bracket", "bracket", "dummy battery", "grip",
+            "manual", "book", "box only", "cover", "skin", "custodia",
+            "scafandro", "gabbia", "batteria", "caricatore", "impugnatura",
+            "tracolla", "protezione", "staffa", "solo scatola",
+        )
+        matches = [
+            match for term in accessory_terms
+            for match in re.finditer(r"\b" + re.escape(term) + r"\b", normalized)
+        ]
+        if not matches:
+            return False
+        primary_sale_cues = (
+            r"\b(?:camera body|body only|corpo macchina|solo corpo|fotocamera)\b",
+            r"\b(?:with|con|include|includes|inclus[oa])\b.*\b(?:battery|batteria|charger|caricatore|grip|impugnatura|strap|tracolla|cage|gabbia)\b",
+        )
+        if any(re.search(pattern, normalized) for pattern in primary_sale_cues):
+            return False
+        compatibility = bool(re.search(
+            r"\b(?:for|compatible with|fits|per|compatibile con)\b", normalized
+        ))
+        model_start = len(normalize_text(title[:camera.source_start]))
+        accessory_before_model = any(match.start() <= model_start for match in matches)
+        explicit_accessory_sale = bool(re.search(
+            r"\b(?:box only|solo scatola|dummy battery|underwater housing|screen protector|l bracket)\b",
+            normalized,
+        ))
+        return compatibility or accessory_before_model or explicit_accessory_sale
+
     def _unmatched_terms(
         self, source: str, candidates: Sequence[ProductMatchCandidate]
     ) -> List[str]:
@@ -456,13 +529,19 @@ class ProductMatcher:
             return False
         normalized_version = normalize_text(product.version)
         normalized_match = normalize_text(matched)
-        if normalized_version in normalized_match:
+        if re.search(r"\b" + re.escape(normalized_version) + r"\b", normalized_match):
             return True
         return (
             "ii" in normalized_version and bool(re.search(r"\b(?:ii|2)\b", normalized_match))
             or "iii" in normalized_version and bool(re.search(r"\biii\b", normalized_match))
             or normalized_version == "iv" and bool(re.search(r"\b(?:iv|4)\b", normalized_match))
+            or normalized_version == "v" and bool(re.search(r"\b(?:v|5)\b", normalized_match))
         )
+
+    @staticmethod
+    def _explicit_version_near(source: str, span: Tuple[int, int]) -> bool:
+        context = normalize_text(source[span[0]:min(len(source), span[1] + 24)])
+        return bool(re.search(r"\b(?:ii|iii|iv|v|2|3|4|5)\b", context))
 
     @staticmethod
     def _mount_supported(mount: str, normalized_source: str) -> bool:

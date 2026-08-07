@@ -14,6 +14,18 @@
       "minimum_request_interval_seconds": 3600,
       "mapping": {"external_id": "id", "url": "url", "title": "title", "description": "description", "price": "price"},
       "notes": "Placeholder only"
+    },
+    {
+      "source_id": "ebay-it",
+      "name": "eBay Italia",
+      "source_type": "EBAY_BROWSE",
+      "enabled": false,
+      "marketplace_id": "EBAY_IT",
+      "country": "IT",
+      "currency": "EUR",
+      "query_limit": 50,
+      "minimum_request_interval_seconds": 5,
+      "notes": "Official eBay Browse API; credentials are environment-only"
     }
   ]
 }

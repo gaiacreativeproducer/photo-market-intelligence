@@ -27,6 +27,7 @@ class SourceRegistry:
 
 
 def default_registry() -> SourceRegistry:
+    from connectors.ebay_browse import EbayBrowseConnector
     from connectors.file_import import FileImportConnector
     from connectors.json_feed import JsonFeedConnector
     from connectors.manual_url import ManualUrlConnector
@@ -36,4 +37,5 @@ def default_registry() -> SourceRegistry:
     registry.register("RSS_ATOM", RssFeedConnector)
     registry.register("FILE_IMPORT", FileImportConnector)
     registry.register("MANUAL_URL", ManualUrlConnector)
+    registry.register("EBAY_BROWSE", EbayBrowseConnector)
     return registry

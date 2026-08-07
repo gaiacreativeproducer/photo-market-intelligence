@@ -1,0 +1,34 @@
+{
+  "itemSummaries": [
+    {
+      "itemId": "v1|camera-body-1|0",
+      "title": "Sony A7 IV ILCE-7M4 body",
+      "itemWebUrl": "https://www.ebay.it/itm/camera-body-1",
+      "price": {"value": "1499.00", "currency": "EUR"},
+      "condition": "Used",
+      "conditionId": "3000",
+      "buyingOptions": ["FIXED_PRICE"],
+      "itemLocation": {"country": "IT"}
+    },
+    {
+      "itemId": "v1|camera-body-2|0",
+      "title": "Sony Alpha a7 IV ILCE-7M4",
+      "itemWebUrl": "https://www.ebay.it/itm/camera-body-2",
+      "price": {"value": "1549.00", "currency": "EUR"},
+      "condition": "New",
+      "conditionId": "1000",
+      "buyingOptions": ["FIXED_PRICE"],
+      "itemLocation": {"country": "IT"}
+    },
+    {
+      "itemId": "v1|housing-1|0",
+      "title": "Underwater housing for Sony A7 IV",
+      "itemWebUrl": "https://www.ebay.it/itm/housing-1",
+      "price": {"value": "399.00", "currency": "EUR"},
+      "condition": "New",
+      "conditionId": "1000",
+      "buyingOptions": ["FIXED_PRICE"],
+      "itemLocation": {"country": "IT"}
+    }
+  ]
+}

@@ -20,6 +20,11 @@ SOURCE_KEYS = {
     "currency", "segment", "request_timeout_seconds", "retry_count",
     "minimum_request_interval_seconds", "mapping", "notes",
 }
+EBAY_REQUIRED_KEYS = {
+    "source_id", "name", "source_type", "enabled", "marketplace_id",
+    "country", "currency", "query_limit", "minimum_request_interval_seconds",
+}
+EBAY_OPTIONAL_KEYS = {"segment_preference", "notes"}
 MAPPING_KEYS = {
     "list_path", "external_id", "url", "title", "description", "price",
     "currency", "source_country", "segment", "condition", "detected_at",
@@ -46,6 +51,32 @@ def load_sources(path: Path, allow_private_network: bool = False) -> List[RadarS
     sources = []; seen = set()
     for index, value in enumerate(root["sources"], 1):
         if not isinstance(value, dict): raise RadarValidationError(f"{path}: source {index} must be an object")
+        if value.get("source_type") == SourceType.EBAY_BROWSE.value:
+            allowed = EBAY_REQUIRED_KEYS | EBAY_OPTIONAL_KEYS
+            unknown = set(value) - allowed
+            missing = EBAY_REQUIRED_KEYS - set(value)
+            if unknown: raise RadarValidationError(f"{path}: source {index}: unknown key {sorted(unknown)[0]!r}")
+            if missing: raise RadarValidationError(f"{path}: source {index}: missing key {sorted(missing)[0]!r}")
+            if value["source_id"] in seen: raise RadarValidationError(f"{path}: duplicate source_id")
+            seen.add(value["source_id"])
+            if not isinstance(value["enabled"], bool): raise RadarValidationError(f"{path}: source {index}: enabled must be boolean")
+            if value["marketplace_id"] not in {"EBAY_IT","EBAY_DE","EBAY_FR","EBAY_ES","EBAY_GB"}:
+                raise RadarValidationError(f"{path}: source {index}: invalid marketplace_id")
+            if not re.fullmatch(r"[A-Z]{2}", str(value["country"])): raise RadarValidationError(f"{path}: invalid country")
+            if not re.fullmatch(r"[A-Z]{3}", str(value["currency"])): raise RadarValidationError(f"{path}: invalid currency")
+            try: query_limit=int(value["query_limit"]); interval=float(value["minimum_request_interval_seconds"])
+            except (TypeError,ValueError): raise RadarValidationError(f"{path}: source {index}: invalid numeric configuration")
+            if not 1 <= query_limit <= 200: raise RadarValidationError(f"{path}: source {index}: query_limit must be from 1 to 200")
+            if interval < 0: raise RadarValidationError(f"{path}: source {index}: minimum_request_interval_seconds cannot be negative")
+            segment=str(value.get("segment_preference","EITHER")).upper()
+            if segment not in {"NEW","USED","EITHER"}: raise RadarValidationError(f"{path}: source {index}: invalid segment_preference")
+            sources.append(RadarSource(
+                str(value["source_id"]),str(value["name"]),SourceType.EBAY_BROWSE,"",
+                bool(value["enabled"]),str(value["country"]),str(value["currency"]),segment,
+                15.0,1,interval,{},str(value.get("notes","")),
+                str(value["marketplace_id"]),query_limit,
+            ))
+            continue
         unknown = set(value) - SOURCE_KEYS
         missing = SOURCE_KEYS - set(value)
         if unknown: raise RadarValidationError(f"{path}: source {index}: unknown key {sorted(unknown)[0]!r}")

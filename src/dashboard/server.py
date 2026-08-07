@@ -27,6 +27,7 @@ from dashboard.demo_data import _catalog
 from dashboard.product_associations import (
     ManualProductAssociationService, ManualProductAssignmentStore,
 )
+from dashboard.ebay_refresh import EbayRefreshService
 
 
 HOST = "127.0.0.1"
@@ -119,9 +120,10 @@ def create_server(
     association_service=ManualProductAssociationService(
         ManualProductAssignmentStore(runtime), RadarStore(runtime), products
     )
+    ebay_refresh_service=EbayRefreshService(runtime,products,aliases)
     router = DashboardRouter(
         data, root / "web", notification_store, assistant, manual_service,
-        data_loader, association_service,
+        data_loader, association_service, ebay_refresh_service,
     )
     server=DashboardHTTPServer((HOST, port), router);server.temporary_runtime=temporary
     return server

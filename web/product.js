@@ -52,7 +52,10 @@ function updateOfferUrl() {
 function offerCard(item, workspace) {
     const card = node("article", "", "listing-card");
     card.append(node("h3", item.title), node("p", `${item.segment} · ${money(item.price, item.currency)} · ${item.source}`));
-    [["Paese", item.country], ["Condizione", item.condition], ["Scatti", item.shutter_count], ["Garanzia", item.warranty_status],
+    [["Marketplace", item.marketplace], ["Paese", item.country], ["Condizione", item.condition], ["Condizione originale eBay", item.original_condition],
+     ["Spedizione", item.shipping_cost == null ? null : money(item.shipping_cost, item.shipping_currency || item.currency)],
+     ["Modalità di acquisto", item.buying_options?.join(", ")], ["Asta", item.auction ? "Sì — esclusa dalle statistiche primarie" : null],
+     ["Scatti", item.shutter_count], ["Garanzia", item.warranty_status],
      ["Difetti", item.defects.length ? item.defects.map(value => value.description).join(", ") : "Nessuno rilevato"],
      ["Accessori", item.accessories.length ? item.accessories.join(", ") : "Non specificati"],
      ["Confidenza riconoscimento", `${item.recognition_confidence}%`], ["Confidenza descrizione", `${item.description_confidence}%`],
@@ -206,12 +209,8 @@ function renderMemory(workspace) {
     add(el("memory"), "Wishlist", workspace.memory_context.wishlist ? "Sì" : "No");
 }
 
-async function load() {
-    if (!productId) { el("message").textContent = "ID prodotto mancante."; return; }
-    const response = await fetch(`/api/products/${encodeURIComponent(productId)}`);
-    const data = await response.json();
-    if (!response.ok) { el("message").textContent = data.error.message; return; }
-    const workspace = data.workspace;
+function renderWorkspace(workspace) {
+    ["identity", "overall-details", "listings", "comparison-table", "market-section", "explanation", "ownership", "risks", "memory"].forEach(id => el(id).replaceChildren());
     renderWorkspaceHeader(workspace);
     renderOffers(workspace);
     renderOfferComparison(workspace);
@@ -221,6 +220,35 @@ async function load() {
     renderMissing(workspace);
     renderMemory(workspace);
 }
+
+async function load() {
+    if (!productId) { el("message").textContent = "ID prodotto mancante."; return; }
+    const response = await fetch(`/api/products/${encodeURIComponent(productId)}`);
+    const data = await response.json();
+    if (!response.ok) { el("message").textContent = data.error.message; return; }
+    renderWorkspace(data.workspace);
+}
+
+el("ebay-refresh").addEventListener("click", async () => {
+    const button = el("ebay-refresh");
+    const status = el("ebay-refresh-status");
+    button.disabled = true;
+    status.textContent = "Aggiornamento offerte eBay in corso…";
+    try {
+        const response = await fetch(`/api/products/${encodeURIComponent(productId)}/ebay-refresh`, {
+            method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error?.message || "Aggiornamento eBay non riuscito.");
+        status.textContent = `eBay ${data.environment}: ${data.retrieved ?? data.results_retrieved} recuperati, ${data.recognized ?? 0} riconosciuti, ${data.persisted_relevant ?? data.relevant_offers_added} pertinenti, ${data.ignored_accessory_unmatched ?? data.ignored_results} accessori/non riconosciuti ignorati, ${data.needs_review ?? 0} da verificare.`;
+        if (data.connector_errors?.length) status.textContent += ` Errori: ${data.connector_errors.join("; ")}`;
+        renderWorkspace(data.workspace);
+        button.disabled = false;
+    } catch (error) {
+        status.textContent = error.message;
+        button.disabled = false;
+    }
+});
 
 load();
 let assistantOpener = null;

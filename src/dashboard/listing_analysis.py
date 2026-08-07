@@ -116,6 +116,14 @@ def listing_view(
         "price": listing.price,
         "currency": listing.currency,
         "country": listing.source_country,
+        "marketplace": listing.marketplace_id or None,
+        "original_condition": listing.original_condition or None,
+        "buying_options": list(listing.buying_options),
+        "auction": "AUCTION" in listing.buying_options,
+        "shipping_cost": listing.shipping_cost,
+        "shipping_currency": listing.shipping_currency or None,
+        "item_location_country": listing.item_location_country or None,
+        "market_stats_eligible": listing.market_stats_eligible,
         "recognition_confidence": listing.recognition_confidence,
         "description_confidence": listing.description_confidence,
         "shutter_count": listing.shutter_count,
@@ -158,6 +166,7 @@ def _snapshots(
             source_countries=evidence["countries"],
             warranty_clarity=evidence["warranty"],
             accessory_completeness=evidence["accessories"],
+            statistical_eligibility=evidence["statistical_eligibility"],
             created_at=max(item.last_seen_at for item in candidates),
         )
         snapshots[(currency, segment)] = engine.build_snapshot(
@@ -177,6 +186,7 @@ def _market_evidence(listings: Sequence[RadarListing]) -> Dict[str, Dict[str, ob
         "countries": {item.listing_id: item.source_country for item in listings},
         "warranty": {item.listing_id: _warranty_known(item) for item in listings},
         "accessories": {item.listing_id: True for item in listings},
+        "statistical_eligibility": {item.listing_id: item.market_stats_eligible for item in listings},
     }
 
 
@@ -348,6 +358,9 @@ def _connector_listing(item: RadarListing) -> Listing:
         item.shutter_count, warranty_until, item.invoice_available,
         item.original_box_available, item.accessories, defects,
         item.seller_claims, missing,
+        item.marketplace_id, item.original_condition, list(item.buying_options),
+        item.shipping_cost, item.shipping_currency, item.item_location_country,
+        item.market_stats_eligible,
     )
 
 

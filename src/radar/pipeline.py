@@ -12,7 +12,7 @@ from typing import List, Optional, Sequence
 
 from analyzers import DescriptionAnalyzer
 from catalog import Product, ProductAlias
-from connectors.models import Listing
+from connectors.models import ConnectorError, Listing
 from knowledge import ProductMatcher
 
 from .models import (
@@ -38,6 +38,10 @@ class PipelineResult:
     listings: List[RadarListing]
     errors: List[RadarError]
     health: List[RadarSourceHealth]
+    recognized_count: int = 0
+    persisted_relevant_count: int = 0
+    ignored_accessory_unmatched_count: int = 0
+    needs_review_count: int = 0
 
 
 class RadarPipeline:
@@ -49,6 +53,7 @@ class RadarPipeline:
     ) -> None:
         self.store = store
         self.products = list(products)
+        self.aliases = list(aliases)
         self.matcher = ProductMatcher(products, aliases)
         self.registry = registry or default_registry()
         self.user_directory = user_directory
@@ -79,15 +84,19 @@ class RadarPipeline:
         health_by_id = {item.source_id: item for item in previous_health}
         current_errors: List[RadarError] = []
         raw_count = normalized_count = new_count = ignored_count = successes = failures = 0
+        recognized_count = relevant_count = ignored_unmatched_count = needs_review_count = 0
         product_categories = {item.id: item.category for item in self.products}
 
         for source in selected:
             started = time.monotonic()
             source_raw = source_normalized = source_relevant = 0
             try:
-                connector = self._connector(source)
+                connector = self._connector(source, watches)
                 connector.validate_source_configuration()
-                batch = connector.fetch_records()
+                if hasattr(connector, "fetch_records_for"):
+                    batch = connector.fetch_records_for(watches, self.products, self.aliases)
+                else:
+                    batch = connector.fetch_records()
                 source_raw = len(batch.records) + len(batch.errors)
                 raw_count += source_raw
                 for message in batch.errors:
@@ -101,10 +110,29 @@ class RadarPipeline:
                             run_id, source, value, record.reference,
                             record.explicitly_supplied, watches, now, product_categories,
                         )
+                        confident = bool(
+                            _recognition.product_id
+                            and _recognition.confidence >= 70
+                            and not _recognition.ambiguous
+                        )
+                        recognized_count += int(confident)
                         if not relevant:
                             ignored_count += 1
+                            review = bool(
+                                _recognition.ambiguous
+                                or (
+                                    _recognition.candidates
+                                    and not any(
+                                        "compatibility reference" in warning
+                                        for warning in _recognition.warnings
+                                    )
+                                )
+                            )
+                            needs_review_count += int(review)
+                            ignored_unmatched_count += int(not review)
                             continue
                         source_relevant += 1
+                        relevant_count += 1
                         listings, created = self._upsert(listings, listing)
                         new_count += int(created)
                     except Exception as exc:
@@ -127,7 +155,9 @@ class RadarPipeline:
                 )
             except Exception as exc:
                 failures += 1
-                current_errors.append(self._error(run_id, source.source_id, "source", type(exc).__name__, "source execution failed", now, True))
+                message = exc.message if isinstance(exc, ConnectorError) else "source execution failed"
+                error_type = exc.error_type if isinstance(exc, ConnectorError) else type(exc).__name__
+                current_errors.append(self._error(run_id, source.source_id, "source", error_type, message, now, True))
                 previous = health_by_id.get(source.source_id)
                 health_by_id[source.source_id] = RadarSourceHealth(
                     source.source_id, "FAILED", now,
@@ -135,7 +165,7 @@ class RadarPipeline:
                     int((time.monotonic() - started) * 1000), source_raw,
                     source_normalized, source_relevant,
                     (previous.consecutive_failures if previous else 0) + 1,
-                    "source execution failed",
+                    message,
                 )
 
         cutoff = now - timedelta(days=stale_days)
@@ -170,15 +200,21 @@ class RadarPipeline:
                     "notification evaluation failed", now, True,
                 )
                 self.store.save_errors(self.store.load_errors() + [notification_error])
-        return PipelineResult(final, listings, current_errors, list(health_by_id.values()))
+        return PipelineResult(
+            final, listings, current_errors, list(health_by_id.values()),
+            recognized_count, relevant_count, ignored_unmatched_count,
+            needs_review_count,
+        )
 
-    def _connector(self, source):
+    def _connector(self, source, watches=()):
         adapter = self.registry.adapter(source.source_type.value)
         kwargs = {}
         if source.source_type == SourceType.FILE_IMPORT:
             kwargs["import_directory"] = self.import_directory
         elif source.source_type == SourceType.MANUAL_URL:
             kwargs["user_directory"] = self.user_directory
+        elif source.source_type == SourceType.EBAY_BROWSE:
+            kwargs.update(products=self.products, aliases=self.aliases, watches=watches)
         else:
             kwargs["allow_private_network"] = self.allow_private_network
         return adapter(source, **kwargs)
@@ -196,7 +232,7 @@ class RadarPipeline:
         watch_match = any(
             watch.active and (not watch.source_ids or source.source_id in watch.source_ids)
             and ((watch.product_id and watch.product_id == recognition.product_id)
-                 or (watch.query and watch.query.casefold() in f"{title} {description}".casefold()))
+                 or (not watch.product_id and watch.query and watch.query.casefold() in f"{title} {description}".casefold()))
             for watch in watches
         )
         recognized = bool(recognition.product_id and recognition.confidence >= 70 and not recognition.ambiguous)
@@ -217,7 +253,8 @@ class RadarPipeline:
             f"{source.source_id}|{external_id}|{url}".encode("utf-8")
         ).hexdigest()
         listing = RadarListing(
-            run_id, uuid.uuid4().hex, external_id, source.source_id, source.name,
+            run_id, uuid.uuid4().hex, external_id, source.source_id,
+            str(value.get("source_name") or source.name),
             url, safe_title, safe_description, _float(value.get("price")),
             str(value.get("currency") or source.currency),
             str(value.get("source_country") or source.country),
@@ -228,6 +265,12 @@ class RadarPipeline:
             analysis.original_box_available,
             [defect.__dict__ for defect in analysis.defects], analysis.accessories,
             analysis.seller_claims, analysis.missing_information, warnings,
+            str(value.get("marketplace_id") or ""),
+            str(value.get("original_condition") or value.get("condition") or ""),
+            [str(item) for item in value.get("buying_options", [])] if isinstance(value.get("buying_options", []), list) else [],
+            _float(value.get("shipping_cost")), str(value.get("shipping_currency") or ""),
+            str(value.get("item_location_country") or value.get("source_country") or ""),
+            bool(value.get("market_stats_eligible", True)),
         )
         return listing, watch_match or recognized or explicit, recognition
 

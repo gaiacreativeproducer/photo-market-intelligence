@@ -1,7 +1,7 @@
 """Strict atomic CSV persistence for radar listings, runs, errors, and health."""
 from __future__ import annotations
 import csv,json,os,tempfile
-from dataclasses import fields
+from dataclasses import MISSING,fields
 from datetime import datetime
 from pathlib import Path
 from typing import List,Sequence
@@ -47,9 +47,16 @@ def _load(path,model):
     expected=tuple(item.name for item in fields(model));result=[]
     with path.open(newline="",encoding="utf-8") as handle:
         reader=csv.DictReader(handle)
-        if tuple(reader.fieldnames or ())!=expected:raise ValueError(f"{path}: invalid radar schema")
+        actual=tuple(reader.fieldnames or ())
+        legacy_listing = model is RadarListing and actual == expected[:len(actual)]
+        if actual!=expected and not legacy_listing:raise ValueError(f"{path}: invalid radar schema")
         for row in reader:
-            values={key:_decode(model,key,value) for key,value in row.items()};result.append(model(**values))
+            values={key:_decode(model,key,value) for key,value in row.items()}
+            for item in fields(model):
+                if item.name not in values:
+                    if item.default is not MISSING:values[item.name]=item.default
+                    elif item.default_factory is not MISSING:values[item.name]=item.default_factory()
+            result.append(model(**values))
     return result
 
 def _encode(value):
@@ -63,8 +70,8 @@ def _encode(value):
 def _decode(model,key,value):
     if key in {"started_at","finished_at","occurred_at","detected_at","first_seen_at","last_seen_at","checked_at","last_success_at"}:return datetime.fromisoformat(value) if value else None
     if key=="status" and model is RadarRun:return RunStatus(value)
-    if key in {"price"}:return float(value) if value else None
+    if key in {"price","shipping_cost"}:return float(value) if value else None
     if key in {"recognition_confidence","description_confidence","listing_count_raw","listing_count_normalized","listing_count_new","listing_count_ignored","incident_count","source_count","source_success_count","source_failure_count","response_time_ms","raw_record_count","normalized_record_count","relevant_persisted_count","consecutive_failures","shutter_count"}:return int(value) if value else (None if key=="shutter_count" else 0)
-    if key in {"active","invoice_available","original_box_available","recoverable","resolved"}:return None if value=="" and key in {"invoice_available","original_box_available"} else value.casefold()=="true"
-    if key in {"defects","accessories","seller_claims","missing_information","warnings"}:return json.loads(value or "[]")
+    if key in {"active","invoice_available","original_box_available","recoverable","resolved","market_stats_eligible"}:return None if value=="" and key in {"invoice_available","original_box_available"} else value.casefold()=="true"
+    if key in {"defects","accessories","seller_claims","missing_information","warnings","buying_options"}:return json.loads(value or "[]")
     return value

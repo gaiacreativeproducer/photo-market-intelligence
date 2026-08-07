@@ -31,6 +31,7 @@ class MarketEngine:
         landed_costs: Optional[Mapping[str, float]] = None,
         warranty_clarity: Optional[Mapping[str, bool]] = None,
         accessory_completeness: Optional[Mapping[str, bool]] = None,
+        statistical_eligibility: Optional[Mapping[str, bool]] = None,
         history: Optional[Sequence[MarketSnapshot]] = None,
         created_at: Optional[datetime] = None,
     ) -> None:
@@ -45,7 +46,7 @@ class MarketEngine:
             description_confidence or {}, description_contradictions or {},
             description_evidence_count or {}, listing_segments or {},
             source_countries or {}, landed_costs or {}, warranty_clarity or {},
-            accessory_completeness or {},
+            accessory_completeness or {}, statistical_eligibility or {},
         )
         self.history = list(history or [])
         self.created_at = created_at or datetime.now(timezone.utc)

@@ -13,6 +13,7 @@ class SourceType(str, Enum):
     RSS_ATOM = "RSS_ATOM"
     FILE_IMPORT = "FILE_IMPORT"
     MANUAL_URL = "MANUAL_URL"
+    EBAY_BROWSE = "EBAY_BROWSE"
 
 
 class RunStatus(str, Enum):
@@ -38,6 +39,8 @@ class RadarSource:
     minimum_request_interval_seconds: float
     mapping: Dict[str, object]
     notes: str = ""
+    marketplace_id: str = ""
+    query_limit: int = 50
 
 
 @dataclass(frozen=True)
@@ -88,6 +91,13 @@ class RadarListing:
     seller_claims: List[str] = field(default_factory=list)
     missing_information: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    marketplace_id: str = ""
+    original_condition: str = ""
+    buying_options: List[str] = field(default_factory=list)
+    shipping_cost: Optional[float] = None
+    shipping_currency: str = ""
+    item_location_country: str = ""
+    market_stats_eligible: bool = True
 
 
 @dataclass(frozen=True)
