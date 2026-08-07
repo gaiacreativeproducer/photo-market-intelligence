@@ -61,7 +61,8 @@ class DashboardRouter:
         if path == "/api/wishlist": return self.json({"items":self.data.context.get("wishlist_items",[])})
         if path == "/api/inventory": return self.json({"items":self.data.context.get("inventory_items",[])})
         if path == "/api/decisions": return self.json({"items":self.data.context.get("decision_items",[])})
-        if path == "/api/listings/live": return self.live_listings(parse_qs(parsed.query,keep_blank_values=True))
+        if path in {"/api/listings", "/api/listings/live"}:
+            return self.live_listings(parse_qs(parsed.query,keep_blank_values=True))
         if path in {"/api/products", "/api/search"}:
             return self.products(parse_qs(parsed.query, keep_blank_values=True), search_endpoint=path.endswith("search"))
         if path == "/api/compare": return self.compare(parse_qs(parsed.query, keep_blank_values=True))
@@ -113,18 +114,27 @@ class DashboardRouter:
                 detail=self.data.details.get(result.get("product_id"))
                 if live:result["listing_analysis"]=live.get("decision")
                 if detail:
+                    workspace=detail.get("workspace")
                     result["market_context"]=detail.get("listing_market",{})
                     key=detail.get("default_comparison_key")
                     result["ownership_comparison"]=detail.get("ownership_comparisons",{}).get(key) if key else None
                     result["comparable_offer_available"]=bool(result["ownership_comparison"])
                     result["overall_conclusion"]=detail.get("overall_conclusion")
+                    result["active_offer_count"]=workspace.offer_count if workspace else len(detail.get("listings",[]))
+                    result["comparison_available"]=bool(workspace and workspace.offer_count>=2)
+                    result["actions"]={
+                        "open_product":result.get("product_url"),
+                        "compare_offers":f'{result.get("product_url")}&offers={result["listing_id"]}#confronta' if result.get("product_url") else None,
+                        "analyze_details":f'{result.get("product_url")}#analisi-{result["listing_id"]}' if result.get("product_url") else None,
+                    }
                 else:
                     result["market_context"]={};result["ownership_comparison"]=None;result["comparable_offer_available"]=False;result["overall_conclusion"]=None
+                    result["active_offer_count"]=0;result["comparison_available"]=False;result["actions"]={}
             return self.json(result,201 if result["status"]=="created" else 200)
         return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
 
     def live_listings(self,query):
-        allowed={"product_id","source","country","segment","active"};problem=self._validate_query(query,allowed)
+        allowed={"product_id","source","country","segment","active","review","price_min","price_max"};problem=self._validate_query(query,allowed)
         if problem:return problem
         values=list(self.data.context.get("live_listings",[]))
         for key in ("product_id","source","country","segment"):
@@ -134,6 +144,17 @@ class DashboardRouter:
         if active is not None:
             if active not in {"true","false"}:return self.error(400,"invalid_query","active must be true or false.")
             values=[item for item in values if item["active"]==(active=="true")]
+        review=self._one(query,"review")
+        if review is not None:
+            if review not in {"true","false"}:return self.error(400,"invalid_query","review must be true or false.")
+            values=[item for item in values if item["needs_review"]==(review=="true")]
+        for key,operator in (("price_min","min"),("price_max","max")):
+            raw=self._one(query,key)
+            if raw is None:continue
+            try:threshold=float(raw)
+            except ValueError:return self.error(400,"invalid_query",f"{key} must be numeric.")
+            if threshold<0:return self.error(400,"invalid_query",f"{key} must not be negative.")
+            values=[item for item in values if item.get("price") is not None and (item["price"]>=threshold if operator=="min" else item["price"]<=threshold)]
         return self.json({"items":values,"count":len(values)})
 
     def notifications(self):

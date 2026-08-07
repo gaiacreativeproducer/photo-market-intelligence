@@ -112,6 +112,9 @@ class ManualApiTests(unittest.TestCase):
         self.assertTrue(comparison["recommendation"]);self.assertTrue(comparison["reasons"])
         self.assertTrue(used_result["listing_analysis"]["reasons"])
         self.assertTrue(used_result["comparable_offer_available"])
+        self.assertEqual(used_result["active_offer_count"],2)
+        self.assertTrue(used_result["comparison_available"])
+        self.assertIn("#confronta",used_result["actions"]["compare_offers"])
         overall=detail["overall_conclusion"]
         self.assertEqual(detail["listing_decisions"][used_result["listing_id"]]["recommendation"],"BUY_NEW")
         self.assertEqual(comparison["recommendation"],"INSUFFICIENT_DATA")
@@ -127,6 +130,14 @@ class ManualApiTests(unittest.TestCase):
         self.assertIn("market_confidence",detail["listing_market"]["EUR:USED"])
         self.assertIn("confidence",detail["listing_decisions"][used_result["listing_id"]])
         self.assertIn("confidence",comparison)
+        workspace=detail["workspace"]
+        self.assertEqual(workspace["offer_count"],2)
+        self.assertEqual(len(workspace["active_offers"]),2)
+        self.assertTrue(all(not item["state"]["needs_product_review"] for item in workspace["active_offers"]))
+        catalog=self.request("/api/products?q=Sony+A7+IV")[2]["products"][0]
+        self.assertEqual(catalog["active_offer_count"],2)
+        self.assertEqual(catalog["lowest_new_offer"],1595)
+        self.assertEqual(catalog["lowest_used_offer"],1200)
 
     def test_honest_comparison_boundaries_and_major_defect(self):
         single=payload(url="https://example.test/z6-single",title="Nikon Z6 III usata",price=1400)
@@ -160,6 +171,9 @@ class ManualApiTests(unittest.TestCase):
         review=payload(url="https://example.test/unknown",source_name="Other",title="Camera usata",description="Buone condizioni")
         result=self.request("/api/listings/manual","POST",review,{"Content-Type":"application/json"})[2];self.assertEqual(result["status"],"needs_review")
         values=self.request("/api/listings/live?source=Other&country=IT")[2]["items"];self.assertTrue(values[0]["needs_review"])
+        canonical=self.request("/api/listings?review=true")[2]
+        self.assertEqual(canonical,self.request("/api/listings/live?review=true")[2])
+        self.assertTrue(all(item["needs_review"] for item in canonical["items"]))
         self.assertEqual(self.request("/api/listings/live?bad=x")[0],400);self.assertEqual(self.request("/api/listings/live?active=maybe")[0],400)
     def test_memory_endpoints_are_allowlisted_and_empty(self):
         for endpoint in ("wishlist","inventory","decisions"):
@@ -186,11 +200,11 @@ class ManualApiTests(unittest.TestCase):
 
 class DemoIsolationTests(unittest.TestCase):
     def test_demo_uses_temporary_runtime(self):
-        real=ROOT/"data/user";before={p.name:p.read_bytes() for p in real.iterdir()} if real.is_dir() else {}
+        real=ROOT/"data/user";before={p.name:p.read_bytes() for p in real.iterdir() if p.is_file()} if real.is_dir() else {}
         server=create_server(0,True,ROOT);runtime=server.router.manual_service.pipeline.store.directory
         try:self.assertNotEqual(runtime.resolve(),real.resolve());server.router.manual_service.submit(payload())
         finally:server.server_close()
-        after={p.name:p.read_bytes() for p in real.iterdir()} if real.is_dir() else {};self.assertEqual(before,after)
+        after={p.name:p.read_bytes() for p in real.iterdir() if p.is_file()} if real.is_dir() else {};self.assertEqual(before,after)
 
 
 if __name__=="__main__":unittest.main()

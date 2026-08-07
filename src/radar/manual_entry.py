@@ -60,6 +60,8 @@ class ManualListingService:
             if match: plausible.append({"product_id":match.id,"name":" ".join(x for x in (match.brand,match.model,match.version) if x),"confidence":item.score})
         return {"status":"created" if created and confident else "updated" if not created and confident else "needs_review",
             "listing_id":persisted.listing_id,"product_id":product_id,
+            "saved_offer":{"title":persisted.title,"price":persisted.price,
+                "currency":persisted.currency,"segment":persisted.segment,"source":persisted.source_name},
             "recognized_product":" ".join(x for x in (product.brand,product.model,product.version) if x) if product else None,
             "recognition_confidence":recognition.confidence,"description_confidence":persisted.description_confidence,
             "extracted":{"shutter_count":persisted.shutter_count,"warranty_until":persisted.warranty_until,

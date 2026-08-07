@@ -1,6 +1,96 @@
 "use strict";
-const manualOpen=document.getElementById("add-listing-open"),manualPanel=document.getElementById("manual-panel"),manualClose=document.getElementById("manual-close"),manualForm=document.getElementById("manual-form"),manualResult=document.getElementById("manual-result");let manualBusy=false;
-function closeManual(){if(manualBusy)return;manualPanel.hidden=true;manualOpen.focus();}
-manualOpen.addEventListener("click",()=>{manualPanel.hidden=false;document.getElementById("manual-url").focus();});manualClose.addEventListener("click",closeManual);document.addEventListener("keydown",event=>{if(event.key==="Escape"&&!manualPanel.hidden)closeManual();});
-function resultRow(label,value){const row=document.createElement("p"),strong=document.createElement("strong");strong.textContent=`${label}: `;row.append(strong,document.createTextNode(value==null?"Unavailable":String(value)));manualResult.append(row);}
-manualForm.addEventListener("submit",async event=>{event.preventDefault();manualBusy=true;manualResult.replaceChildren();document.querySelectorAll(".field-error").forEach(node=>node.textContent="");const form=new FormData(manualForm);const payload={url:form.get("url"),source_name:form.get("source_name"),title:form.get("title"),description:form.get("description"),price:form.get("price"),currency:String(form.get("currency")).toUpperCase(),source_country:String(form.get("source_country")).toUpperCase(),segment:form.get("segment"),detected_at:form.get("detected_at")||null};try{const response=await fetch("/api/listings/manual",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)}),data=await response.json();if(!response.ok){const field=document.getElementById(`error-${data.error.field}`);if(field)field.textContent=data.error.message;else resultRow("Errore",data.error.message);return;}resultRow("Stato",data.status);resultRow("Prodotto riconosciuto",data.recognized_product||"Prodotto da verificare");resultRow("Confidenza riconoscimento",`${data.recognition_confidence}%`);resultRow("Confidenza descrizione",`${data.description_confidence}%`);resultRow("Scatti",data.extracted.shutter_count);resultRow("Fattura",data.extracted.invoice_available);resultRow("Scatola originale",data.extracted.original_box_available);resultRow("Difetti",data.extracted.defects.length?data.extracted.defects.map(item=>item.description).join(", "):"Nessuno rilevato");resultRow("Avvisi",data.warnings.join(", ")||"Nessuno");if(data.overall_conclusion){resultRow("Conclusione complessiva",data.overall_conclusion.title);resultRow("Confidenza complessiva",`${data.overall_conclusion.confidence}%`);}if(data.listing_analysis){resultRow("Valutazione singolo annuncio",data.listing_analysis.recommendation);resultRow("Confidenza valutazione",`${data.listing_analysis.confidence}%`);resultRow("Motivi",data.listing_analysis.reasons.join(" ")||"Dati insufficienti");}resultRow("Evidenza di mercato",Object.keys(data.market_context||{}).length?"Aggiornata":"Dati insufficienti");resultRow("Confronto proprietà",data.comparable_offer_available?data.ownership_comparison.recommendation:"Nessuna offerta comparabile");if(data.plausible_candidates.length)resultRow("Prodotti possibili",data.plausible_candidates.map(item=>item.name).join(", "));if(data.product_url){const link=document.createElement("a");link.href=data.product_url;link.textContent="Apri analisi prodotto";manualResult.append(link);const compare=document.createElement("a");compare.href=`${data.product_url}#new-used`;compare.textContent="Confronta con un'altra offerta";manualResult.append(compare);const all=document.createElement("button");all.type="button";all.textContent="Vedi tutti gli annunci del prodotto";all.addEventListener("click",()=>openDataView("live",new URLSearchParams({product_id:data.product_id})));manualResult.append(all);}const again=document.createElement("button");again.type="button";again.textContent="Aggiungi un altro annuncio";again.addEventListener("click",()=>{manualForm.reset();document.getElementById("manual-currency").value="EUR";document.getElementById("manual-country").value="IT";manualResult.replaceChildren();document.getElementById("manual-url").focus();});manualResult.append(again);await context();await openDataView("live");}finally{manualBusy=false;}});
+
+const manualOpen = document.getElementById("add-listing-open");
+const manualPanel = document.getElementById("manual-panel");
+const manualClose = document.getElementById("manual-close");
+const manualForm = document.getElementById("manual-form");
+const manualResult = document.getElementById("manual-result");
+let manualBusy = false;
+
+function closeManual() {
+    if (manualBusy) return;
+    manualPanel.hidden = true;
+    manualOpen.focus();
+}
+
+function resultRow(label, value) {
+    const row = document.createElement("p");
+    const strong = document.createElement("strong");
+    strong.textContent = `${label}: `;
+    row.append(strong, document.createTextNode(value == null ? "Non disponibile" : String(value)));
+    manualResult.append(row);
+}
+
+function actionLink(label, href, primary = false) {
+    if (!href) return;
+    const link = document.createElement("a");
+    link.textContent = label;
+    link.href = href;
+    if (primary) link.className = "primary-action";
+    manualResult.append(link);
+}
+
+function renderSuccess(data) {
+    resultRow("Stato", data.status === "needs_review" ? "Riconoscimento da verificare" : "Annuncio salvato");
+    resultRow("Prodotto riconosciuto", data.recognized_product || "Prodotto non identificato con sicurezza");
+    resultRow("Offerta salvata", `${data.saved_offer.segment} · ${money(data.saved_offer.price, data.saved_offer.currency)} · ${data.saved_offer.source}`);
+    resultRow("Confidenza riconoscimento", `${data.recognition_confidence}%`);
+    resultRow("Confidenza descrizione", `${data.description_confidence}%`);
+    resultRow("Scatti", data.extracted.shutter_count);
+    resultRow("Fattura", data.extracted.invoice_available);
+    resultRow("Scatola originale", data.extracted.original_box_available);
+    resultRow("Difetti", data.extracted.defects.length ? data.extracted.defects.map(item => item.description).join(", ") : "Nessuno rilevato");
+    resultRow("Rischi", data.warnings.join(", ") || "Nessun rischio strutturato rilevato");
+    if (data.listing_analysis) {
+        resultRow("Valutazione di questo annuncio", data.listing_analysis.recommendation);
+        resultRow("Confidenza valutazione", `${data.listing_analysis.confidence}%`);
+    }
+    resultRow("Offerte attive per il prodotto", data.active_offer_count);
+    resultRow("Confronto offerte", data.comparison_available ? "Disponibile" : "Aggiungi un’altra offerta per confrontare");
+    if (data.plausible_candidates.length) resultRow("Prodotti possibili", data.plausible_candidates.map(item => item.name).join(", "));
+    actionLink("Apri prodotto", data.actions?.open_product, true);
+    actionLink("Confronta offerte", data.actions?.compare_offers, data.comparison_available);
+    actionLink("Analizza dettagli", data.actions?.analyze_details);
+    const again = document.createElement("button");
+    again.type = "button";
+    again.textContent = "Aggiungi un altro annuncio";
+    again.addEventListener("click", () => {
+        manualForm.reset();
+        document.getElementById("manual-currency").value = "EUR";
+        document.getElementById("manual-country").value = "IT";
+        manualResult.replaceChildren();
+        document.getElementById("manual-url").focus();
+    });
+    manualResult.append(again);
+}
+
+manualOpen.addEventListener("click", () => { manualPanel.hidden = false; document.getElementById("manual-url").focus(); });
+manualClose.addEventListener("click", closeManual);
+document.addEventListener("keydown", event => { if (event.key === "Escape" && !manualPanel.hidden) closeManual(); });
+manualForm.addEventListener("submit", async event => {
+    event.preventDefault();
+    manualBusy = true;
+    manualResult.replaceChildren();
+    document.querySelectorAll(".field-error").forEach(item => { item.textContent = ""; });
+    const form = new FormData(manualForm);
+    const payload = {
+        url: form.get("url"), source_name: form.get("source_name"), title: form.get("title"),
+        description: form.get("description"), price: form.get("price"),
+        currency: String(form.get("currency")).toUpperCase(),
+        source_country: String(form.get("source_country")).toUpperCase(),
+        segment: form.get("segment"), detected_at: form.get("detected_at") || null,
+    };
+    try {
+        const response = await fetch("/api/listings/manual", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(payload)});
+        const data = await response.json();
+        if (!response.ok) {
+            const field = document.getElementById(`error-${data.error.field}`);
+            if (field) field.textContent = data.error.message;
+            else resultRow("Errore", data.error.message);
+            return;
+        }
+        renderSuccess(data);
+        await loadContext();
+        await loadProducts();
+    } finally { manualBusy = false; }
+});

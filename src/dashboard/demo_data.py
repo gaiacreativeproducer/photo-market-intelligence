@@ -19,7 +19,7 @@ from ownership.models import (
     OwnershipComparison, OwnershipProjection, OwnershipRecommendation,
 )
 from radar.persistence import RadarStore
-from .listing_analysis import analyze_listings, listing_view
+from .product_workspace import ProductWorkspaceBuilder
 
 from .view_models import DashboardData, ProductView
 
@@ -56,7 +56,7 @@ class LocalDashboardDataProvider:
         except (OSError, ValueError):
             raise
         data = _assemble("LOCAL", products, aliases, inventory, wishlist, decisions, preferences, False)
-        return _add_radar_data(data, RadarStore(paths), products)
+        return _add_radar_data(data, RadarStore(paths), products, aliases)
 
 
 class DemoDashboardDataProvider(LocalDashboardDataProvider):
@@ -73,7 +73,7 @@ class DemoDashboardDataProvider(LocalDashboardDataProvider):
         ]
         decisions = [DecisionHistoryEntry("demo-decision", "sony-alpha-a7-iv", "https://example.invalid/listing/a7iv", "Demo Market", "BUY_USED", 88, "PREFER_USED", 1200, "EUR", ["Below used median"], "", now)]
         data = _assemble("DEMO", products, aliases, inventory, wishlist, decisions, UserPreferences(target_market_country="Italy"), True)
-        return _add_radar_data(data, RadarStore(self.user_directory), products)
+        return _add_radar_data(data, RadarStore(self.user_directory), products, aliases)
 
 
 def _catalog(root: Path):
@@ -197,35 +197,43 @@ def _detail(view: ProductView, rich: bool, inventory, wishlist, decisions) -> Di
 
 
 def _add_radar_data(
-    data: DashboardData, store: RadarStore, products: Sequence[Product]
+    data: DashboardData, store: RadarStore, products: Sequence[Product],
+    aliases: Sequence[ProductAlias],
 ) -> DashboardData:
-    """Add only privacy-safe, relevant live-radar fields to local views."""
+    """Compose product workspaces and the global inbox from one listing index."""
     all_listings = store.load_listings()
-    listings = [item for item in all_listings if item.active]
-    products_by_id = {product.id: product for product in products}
-    analysis = analyze_listings(products, all_listings)
-    for item in listings:
-        if item.product_id not in data.details:
-            continue
-        view = listing_view(item, products_by_id, analysis)
-        if not view["needs_review"]:
-            data.details[item.product_id]["listings"].append(view)
-    for product_id, value in analysis.items():
-        if product_id not in data.details:
-            continue
-        data.details[product_id]["listing_market"] = value["market"]
-        data.details[product_id]["listing_decisions"] = value["decisions"]
-        data.details[product_id]["ownership_comparisons"] = value["comparisons"]
-        data.details[product_id]["default_comparison_key"] = value["default_comparison_key"]
-        data.details[product_id]["comparison_options"] = value["comparison_options"]
-        data.details[product_id]["overall_conclusion"] = value["overall_conclusion"]
-        data.details[product_id]["comparison_conclusions"] = value["comparison_conclusions"]
-        _update_product_market_view(data, product_id, value["market"])
+    builder = ProductWorkspaceBuilder(products, all_listings, aliases)
+    product_by_id = {item.id: item for item in products}
+    for product_id, detail in data.details.items():
+        analysis = builder.analysis.get(product_id, {})
+        _update_product_market_view(data, product_id, analysis.get("market", {}))
+        current = next(item for item in data.products if item.id == product_id)
+        workspace = builder.build(
+            product_by_id[product_id], current, detail["memory"], detail["warnings"]
+        )
+        enriched = builder.enrich_product(current, workspace)
+        workspace = replace(workspace, product=enriched)
+        index = next(i for i, item in enumerate(data.products) if item.id == product_id)
+        data.products[index] = enriched
+        detail.update({
+            "product": enriched,
+            "workspace": workspace,
+            "listings": workspace.active_offers,
+            "listing_market": workspace.market_snapshots,
+            "listing_decisions": workspace.listing_analyses,
+            "ownership_comparisons": workspace.available_comparisons,
+            "default_comparison_key": workspace.selected_comparison,
+            "comparison_options": workspace.comparison_options,
+            "overall_conclusion": workspace.overall_conclusion,
+            "comparison_conclusions": workspace.comparison_conclusions,
+        })
+    inbox = builder.listing_views()
     runs = store.load_runs()
     health = store.load_health()
     latest = max(runs, key=lambda item: item.started_at) if runs else None
     data.context.update({
-        "live_listing_count": len(listings),
+        "live_listing_count": sum(bool(item["active"]) for item in inbox),
+        "listing_review_count": sum(bool(item["needs_review"]) for item in inbox),
         "latest_radar_status": latest.status.value if latest else None,
         "latest_radar_ignored_count": latest.listing_count_ignored if latest else 0,
         "radar_source_health": [
@@ -234,10 +242,7 @@ def _add_radar_data(
              "relevant_persisted_count": item.relevant_persisted_count}
             for item in health
         ],
-        "live_listings": [
-            listing_view(item, products_by_id, analysis)
-            for item in sorted(all_listings,key=lambda value:(value.last_seen_at,value.listing_id),reverse=True)
-        ],
+        "live_listings": inbox,
     })
     return data
 

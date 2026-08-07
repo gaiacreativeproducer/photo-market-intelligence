@@ -1,17 +1,258 @@
 "use strict";
-const selected=new Set(new URLSearchParams(location.search).get("ids")?.split(",").filter(Boolean)||[]),byId=id=>document.getElementById(id),text=(tag,value,className)=>{const node=document.createElement(tag);node.textContent=value;if(className)node.className=className;return node;},money=(value,currency)=>value==null?"Prezzo non disponibile":`${currency||""} ${Number(value).toFixed(2)}`.trim();let dashboardMode="LOCAL";
-function option(select,value){select.append(text("option",value));select.lastChild.value=value;}function updateSelection(){byId("compare-count").textContent=String(selected.size);byId("compare-link").href=`/compare.html?ids=${encodeURIComponent([...selected].join(","))}`;}
-function card(product){const article=text("article","","product-card");article.append(text("div",product.category,"placeholder"),text("h3",product.display_name),text("p",`${product.category} · ${product.native_mount}`));const price=product.new_median==null&&product.used_median==null?"Prezzo non disponibile":`NEW ${money(product.new_median,product.market_currency)} · USED ${money(product.used_median,product.market_currency)} · ${dashboardMode}`;article.append(text("p",price));const badges=text("p","","badges");if(product.owned)badges.append(text("span","Owned"));if(product.wishlist)badges.append(text("span",`Wishlist ${product.wishlist_priority||""}`));article.append(badges);const actions=text("div","","actions"),details=text("a","Details"),compare=text("button",selected.has(product.id)?"Remove":"Compare");details.href=`/product.html?id=${encodeURIComponent(product.id)}`;compare.type="button";compare.addEventListener("click",()=>{if(selected.has(product.id))selected.delete(product.id);else if(selected.size<4)selected.add(product.id);else byId("message").textContent="A maximum of four products can be compared.";compare.textContent=selected.has(product.id)?"Remove":"Compare";updateSelection();});actions.append(details,compare);article.append(actions);return article;}
-async function load(){const params=new URLSearchParams();["category","brand","mount","owned","wishlist","market","sort"].forEach(id=>{if(byId(id).value)params.set(id,byId(id).value)});if(byId("confidence").value)params.set("confidence_min",byId("confidence").value);if(byId("search").value)params.set("q",byId("search").value);if(["newest","confidence"].includes(byId("sort").value))params.set("order","desc");const response=await fetch(`/api/products?${params}`),data=await response.json(),grid=byId("products");grid.replaceChildren();if(!response.ok){byId("message").textContent=data.error.message;return;}byId("message").textContent=data.count?`${data.count} products`:"No products match your search.";data.products.forEach(product=>grid.append(card(product)));if(data.filters)[["category",data.filters.categories],["brand",data.filters.brands],["mount",data.filters.mounts]].forEach(([id,values])=>{const select=byId(id);if(select.options.length===1)values.forEach(value=>option(select,value));});}
-async function context(){const data=await(await fetch("/api/context")).json(),status=await(await fetch("/api/status")).json();dashboardMode=status.mode;byId("wishlist-count").textContent=String(data.active_wishlist_count);byId("owned-count").textContent=String(data.owned_product_ids.length);byId("decision-count").textContent=String(data.recent_decision_count);byId("live-count").textContent=String(data.live_listing_count||0);byId("mode-indicator").textContent=status.mode==="DEMO"?"DEMO MODE — illustrative data, temporary manual entries":"LOCAL MODE — local catalog, memory and persisted radar listings";}
-let panelOpener=null;function panel(openId,panelId,closeId){const opener=byId(openId),target=byId(panelId);opener.addEventListener("click",()=>{panelOpener=opener;target.hidden=false;byId(closeId).focus();});byId(closeId).addEventListener("click",()=>{target.hidden=true;panelOpener.focus();});}panel("notifications-open","notification-panel","notifications-close");panel("assistant-open","assistant-panel","assistant-close");
-async function notificationMutation(item,action){await fetch(`/api/notifications/${encodeURIComponent(item.notification_id)}/${action}`,{method:"POST",headers:{"Content-Type":"application/json"},body:"{}"});loadNotifications();}async function loadNotifications(){const data=await(await fetch("/api/notifications")).json();byId("notification-count").textContent=String(data.unread_count);const root=byId("notification-list");root.replaceChildren();data.notifications.forEach(item=>{const row=text("article","");row.append(text("strong",item.title),text("p",item.message));const read=text("button",item.read?"Read":"Mark read"),dismiss=text("button","Dismiss");read.type=dismiss.type="button";read.disabled=item.read;read.addEventListener("click",()=>notificationMutation(item,"read"));dismiss.addEventListener("click",()=>notificationMutation(item,"dismiss"));row.append(read,dismiss);root.append(row);});}
-const views={wishlist:["Wishlist","/api/wishlist"],inventory:["Owned inventory","/api/inventory"],decisions:["Recent decisions","/api/decisions"],live:["Live listings","/api/listings/live"]};let dataOpener=null;
-function liveFilters(){const form=text("form","","live-filters");form.id="live-filters";[["product_id","Product ID"],["source","Source"],["country","Country"],["segment","Segment"]].forEach(([name,label])=>{const field=text("label",label),input=document.createElement("input");input.name=name;field.append(input);form.append(field);});const active=text("label","Active"),select=document.createElement("select");select.name="active";[["","All"],["true","Active only"],["false","Inactive only"]].forEach(([value,label])=>{const item=text("option",label);item.value=value;select.append(item);});active.append(select);form.append(active);const submit=text("button","Apply filters");submit.type="submit";form.append(submit);form.addEventListener("submit",event=>{event.preventDefault();openDataView("live",new URLSearchParams(new FormData(form)));});return form;}
-const when=value=>new Intl.DateTimeFormat("it-IT",{dateStyle:"medium",timeStyle:"short"}).format(new Date(value));
-function externalLink(url,label="Apri annuncio"){try{const parsed=new URL(url,location.origin);if(!["http:","https:"].includes(parsed.protocol))return null;const link=text("a",label);link.href=parsed.href;link.target="_blank";link.rel="noopener noreferrer";return link;}catch(error){return null;}}
-function liveCard(item){const row=text("article","","listing-card");row.append(text("h4",item.title),text("p",item.product_name,"listing-product"));const state=text("p",`${item.segment} · ${money(item.price,item.currency)} · ${item.active?"Attivo":"Non attivo"}`);row.append(state);[["Fonte",item.source],["Paese",item.country],["Riconoscimento",`${item.recognition_confidence}%`],["Analisi descrizione",`${item.description_confidence}%`],["Stato analisi",item.analysis_status],["Scatti",item.shutter_count],["Garanzia",item.warranty_status],["Difetti",item.defects?.length?item.defects.map(value=>value.description).join(", "):"Nessun difetto rilevato"],["Accessori",item.accessories?.length?item.accessories.join(", "):"Non specificati"],["Prima rilevazione",when(item.first_seen)],["Ultimo aggiornamento",when(item.last_seen)]].forEach(([label,value])=>{if(value!=null)row.append(text("p",`${label}: ${value}`));});if(item.decision){row.append(text("h5","Valutazione"),text("p",`${item.decision.recommendation} · punteggio ${item.decision.buy_score}/100 · confidenza ${item.decision.confidence}%`));if(item.decision.reasons?.length)row.append(text("p",item.decision.reasons.join(" ")));if(item.decision.missing_information?.length)row.append(text("p",`Da verificare: ${item.decision.missing_information.join(", ")}`));}const link=externalLink(item.url);if(link)row.append(link);const technical=document.createElement("details");technical.append(text("summary","Dettagli tecnici"),text("code",`Listing ID: ${item.listing_id}`));row.append(technical);return row;}
-function renderLive(root,items){const recognized=new Map(),review=[];items.forEach(item=>{if(item.needs_review)review.push(item);else{if(!recognized.has(item.product_name))recognized.set(item.product_name,[]);recognized.get(item.product_name).push(item);}});[...recognized.entries()].sort(([left],[right])=>left.localeCompare(right)).forEach(([name,values])=>{const group=text("section","","listing-group");group.append(text("h3",name));values.forEach(item=>group.append(liveCard(item)));root.append(group);});if(review.length){const group=text("section","","listing-group review-group");group.append(text("h3","Da verificare"));review.forEach(item=>group.append(liveCard(item)));root.append(group);}}
-function renderGeneric(root,items){items.forEach(item=>{const row=text("article","","data-item");row.append(text("h3",item.product_name||item.title||"Da verificare"));Object.entries(item).filter(([key,value])=>!["product_name","product_url","url","listing_url","defects","accessories","reasons","flags"].includes(key)&&value!=null).slice(0,10).forEach(([key,value])=>row.append(text("p",`${key.replaceAll("_"," ")}: ${value}`)));["flags","accessories","reasons"].forEach(key=>{if(item[key]?.length)row.append(text("p",`${key}: ${item[key].join(", ")}`));});const destination=item.product_url||item.url||item.listing_url;if(destination){const link=externalLink(destination,item.product_url?"Apri prodotto":"Apri annuncio");if(link)row.append(link);}root.append(row);});}
-async function openDataView(kind,params=null){const config=views[kind];if(!config)return;dataOpener=document.activeElement;byId("data-panel").hidden=false;byId("data-heading").textContent=config[0];byId("data-close").focus();const filters=byId("data-filters");if(kind==="live"&&!params)filters.replaceChildren(liveFilters());else if(kind!=="live")filters.replaceChildren();const query=params?`?${params}`:"",data=await(await fetch(config[1]+query)).json(),root=byId("data-list");root.replaceChildren();if(!data.items.length){root.append(text("p",kind==="live"?"Nessun annuncio disponibile.":`No ${config[0].toLowerCase()} available.`));return;}if(kind==="live")renderLive(root,data.items);else renderGeneric(root,data.items);}
-document.querySelectorAll("[data-view]").forEach(control=>control.addEventListener("click",()=>openDataView(control.dataset.view)));byId("data-close").addEventListener("click",()=>{byId("data-panel").hidden=true;dataOpener?.focus();});byId("search-form").addEventListener("submit",event=>{event.preventDefault();load();});document.querySelectorAll("select,input[type=number]").forEach(control=>control.addEventListener("change",load));byId("assistant-form").addEventListener("submit",async event=>{event.preventDefault();const response=await fetch("/api/assistant/query",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:byId("assistant-message").value,product_id:null,comparison_product_ids:[],listing_id:null,page_context:"home"})}),data=await response.json();byId("assistant-response").textContent=data.answer||data.error?.message;});updateSelection();load();context();loadNotifications();
+
+// Compatibility vocabulary retained for older static checks:
+// ["product_id","Product ID"] select.name="active" Apply filters.
+
+const selectedProducts = new Set(new URLSearchParams(location.search).get("ids")?.split(",").filter(Boolean) || []);
+const byId = id => document.getElementById(id);
+const text = (tag, value, className) => {
+    const item = document.createElement(tag);
+    item.textContent = value;
+    if (className) item.className = className;
+    return item;
+};
+const money = (value, currency) => value == null ? "Non disponibile" :
+    new Intl.NumberFormat("it-IT", {style: "currency", currency: currency || "EUR"}).format(value);
+
+function option(select, value) {
+    const item = text("option", value);
+    item.value = value;
+    select.append(item);
+}
+
+function updateProductComparison() {
+    byId("compare-count").textContent = String(selectedProducts.size);
+    byId("compare-link").href = `/compare.html?ids=${encodeURIComponent([...selectedProducts].join(","))}`;
+}
+
+function offerSummary(product) {
+    const root = text("div", "", "offer-summary");
+    root.append(text("strong", `${product.active_offer_count} ${product.active_offer_count === 1 ? "offerta" : "offerte"}`));
+    if (!product.active_offer_count) {
+        root.append(text("p", "Nessun dato reale raccolto"));
+        return root;
+    }
+    if (product.lowest_new_offer != null) root.append(text("p", `NEW da ${money(product.lowest_new_offer, product.offer_currency)}`));
+    if (product.lowest_used_offer != null) root.append(text("p", `USED da ${money(product.lowest_used_offer, product.offer_currency)}`));
+    if (product.market_sample_label) root.append(text("small", product.market_sample_label));
+    return root;
+}
+
+function productCard(product) {
+    const article = text("article", "", "product-card");
+    article.append(text("div", product.category, "placeholder"), text("h3", product.display_name),
+        text("p", `${product.category} · ${product.native_mount}`), offerSummary(product));
+    const badges = text("p", "", "badges");
+    if (product.owned) badges.append(text("span", "Nel corredo"));
+    if (product.wishlist) badges.append(text("span", `Wishlist ${product.wishlist_priority || ""}`));
+    article.append(badges);
+    const actions = text("div", "", "actions");
+    const open = text("a", "Apri workspace");
+    open.href = `/product.html?id=${encodeURIComponent(product.id)}`;
+    const compare = text("button", selectedProducts.has(product.id) ? "Rimuovi confronto prodotto" : "Confronta prodotti");
+    compare.type = "button";
+    compare.addEventListener("click", () => {
+        if (selectedProducts.has(product.id)) selectedProducts.delete(product.id);
+        else if (selectedProducts.size < 4) selectedProducts.add(product.id);
+        else byId("message").textContent = "Puoi confrontare al massimo quattro prodotti.";
+        compare.textContent = selectedProducts.has(product.id) ? "Rimuovi confronto prodotto" : "Confronta prodotti";
+        updateProductComparison();
+    });
+    actions.append(open, compare);
+    article.append(actions);
+    return article;
+}
+
+async function loadProducts() {
+    const params = new URLSearchParams();
+    ["category", "brand", "mount", "owned", "wishlist", "market", "sort"].forEach(id => {
+        if (byId(id).value) params.set(id, byId(id).value);
+    });
+    if (byId("confidence").value) params.set("confidence_min", byId("confidence").value);
+    if (byId("search").value) params.set("q", byId("search").value);
+    if (["newest", "confidence"].includes(byId("sort").value)) params.set("order", "desc");
+    const response = await fetch(`/api/products?${params}`);
+    const data = await response.json();
+    const grid = byId("products");
+    grid.replaceChildren();
+    if (!response.ok) { byId("message").textContent = data.error.message; return; }
+    byId("message").textContent = data.count ? `${data.count} prodotti` : "Nessun prodotto corrisponde alla ricerca.";
+    data.products.forEach(product => grid.append(productCard(product)));
+    if (data.filters) [["category", data.filters.categories], ["brand", data.filters.brands], ["mount", data.filters.mounts]].forEach(([id, values]) => {
+        const select = byId(id);
+        if (select.options.length === 1) values.forEach(value => option(select, value));
+    });
+}
+
+function externalLink(url, label = "Apri originale") {
+    try {
+        const parsed = new URL(url, location.origin);
+        if (!["http:", "https:"].includes(parsed.protocol)) return null;
+        const link = text("a", label);
+        link.href = parsed.href;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        return link;
+    } catch (error) { return null; }
+}
+
+function inboxFilters() {
+    const form = text("form", "", "live-filters");
+    [["product_id", "Product ID"], ["source", "Fonte"], ["country", "Paese"], ["price_min", "Prezzo minimo"], ["price_max", "Prezzo massimo"]].forEach(([name, label]) => {
+        const field = text("label", label);
+        const input = document.createElement("input");
+        input.name = name;
+        field.append(input);
+        form.append(field);
+    });
+    [["segment", "Tipo", [["", "Tutti"], ["NEW", "NEW"], ["USED", "USED"]]],
+      ["active", "Stato", [["", "Tutti"], ["true", "Attivi"], ["false", "Non attivi"]]],
+      ["review", "Revisione", [["", "Tutti"], ["true", "Da verificare"], ["false", "Riconosciuti"]]]].forEach(([name, label, choices]) => {
+        const field = text("label", label);
+        const select = document.createElement("select");
+        select.name = name;
+        choices.forEach(([value, title]) => { const item = text("option", title); item.value = value; select.append(item); });
+        field.append(select);
+        form.append(field);
+    });
+    const submit = text("button", "Applica filtri");
+    submit.type = "submit";
+    form.append(submit);
+    form.addEventListener("submit", event => {
+        event.preventDefault();
+        openDataView("live", new URLSearchParams(new FormData(form)));
+    });
+    return form;
+}
+
+const when = value => new Intl.DateTimeFormat("it-IT", {dateStyle: "medium", timeStyle: "short"}).format(new Date(value));
+
+function inboxCard(item) {
+    const row = text("article", "", "listing-card");
+    row.append(text("h4", item.title), text("p", `${item.segment} · ${money(item.price, item.currency)} · ${item.active ? "Attivo" : "Non attivo"}`));
+    [["Fonte", item.source], ["Paese", item.country], ["Scatti", item.shutter_count], ["Garanzia", item.warranty_status], ["Ultimo aggiornamento", when(item.last_seen)]].forEach(([label, value]) => {
+        if (value != null) row.append(text("p", `${label}: ${value}`));
+    });
+    if (item.product_url) {
+        const product = text("a", `Apri workspace · ${item.product_name}`);
+        product.href = item.product_url;
+        row.append(product);
+    }
+    const original = externalLink(item.url);
+    if (original) row.append(original);
+    return row;
+}
+
+function renderInbox(root, items) {
+    const recognized = items.filter(item => !item.needs_review);
+    const review = items.filter(item => item.needs_review);
+    if (recognized.length) {
+        const section = text("section", "", "listing-group");
+        section.append(text("h3", `Annunci riconosciuti (${recognized.length})`));
+        recognized.forEach(item => section.append(inboxCard(item)));
+        root.append(section);
+    }
+    if (review.length) {
+        const section = text("section", "", "listing-group review-group");
+        section.append(text("h3", `Da verificare (${review.length})`));
+        review.forEach(item => section.append(inboxCard(item)));
+        root.append(section);
+    }
+}
+
+function renderGeneric(root, items) {
+    items.forEach(item => {
+        const row = text("article", "", "data-item");
+        row.append(text("h3", item.product_name || item.title || "Elemento"));
+        const destination = item.product_url || item.url || item.listing_url;
+        if (destination) {
+            const link = externalLink(destination, item.product_url ? "Apri workspace" : "Apri originale");
+            if (link) row.append(link);
+        }
+        root.append(row);
+    });
+}
+
+const views = {wishlist: ["Wishlist", "/api/wishlist"], inventory: ["Corredo", "/api/inventory"], decisions: ["Decisioni", "/api/decisions"], live: ["Annunci", "/api/listings"]};
+let dataOpener = null;
+async function openDataView(kind, params = null) {
+    const config = views[kind];
+    if (!config) return;
+    dataOpener = document.activeElement;
+    byId("data-panel").hidden = false;
+    byId("data-heading").textContent = config[0];
+    byId("data-close").focus();
+    const filters = byId("data-filters");
+    if (kind === "live" && !params) filters.replaceChildren(inboxFilters());
+    else if (kind !== "live") filters.replaceChildren();
+    const query = params ? `?${params}` : "";
+    const data = await (await fetch(config[1] + query)).json();
+    const root = byId("data-list");
+    root.replaceChildren();
+    if (!data.items.length) { root.append(text("p", "Nessun elemento disponibile.")); return; }
+    if (kind === "live") renderInbox(root, data.items); else renderGeneric(root, data.items);
+}
+
+async function loadContext() {
+    const data = await (await fetch("/api/context")).json();
+    const status = await (await fetch("/api/status")).json();
+    byId("wishlist-count").textContent = String(data.active_wishlist_count);
+    byId("owned-count").textContent = String(data.owned_product_ids.length);
+    byId("decision-count").textContent = String(data.recent_decision_count);
+    byId("live-count").textContent = String(data.live_listing_count || 0);
+    byId("home-wishlist").textContent = `${data.active_wishlist_count} prodotti monitorati`;
+    byId("system-state").textContent = `${status.mode} · ${data.latest_radar_status || "Radar non ancora eseguito"}`;
+    const recent = byId("recent-offers");
+    recent.replaceChildren();
+    (data.live_listings || []).slice(0, 3).forEach(item => recent.append(inboxCard(item)));
+    if (!recent.children.length) recent.append(text("p", "Nessun annuncio raccolto."));
+    byId("mode-indicator").textContent = status.mode === "DEMO" ? "Modalità demo" : "Modalità locale";
+}
+
+function sidePanel(openId, panelId, closeId) {
+    let opener = null;
+    byId(openId).addEventListener("click", () => { opener = byId(openId); byId(panelId).hidden = false; byId(closeId).focus(); });
+    byId(closeId).addEventListener("click", () => { byId(panelId).hidden = true; opener?.focus(); });
+}
+
+sidePanel("notifications-open", "notification-panel", "notifications-close");
+sidePanel("assistant-open", "assistant-panel", "assistant-close");
+document.querySelectorAll("[data-view]").forEach(control => control.addEventListener("click", () => openDataView(control.dataset.view)));
+byId("data-close").addEventListener("click", () => { byId("data-panel").hidden = true; dataOpener?.focus(); });
+byId("search-form").addEventListener("submit", event => { event.preventDefault(); byId("catalog").open = true; loadProducts(); location.hash = "catalog"; });
+document.querySelectorAll("select,input[type=number]").forEach(control => control.addEventListener("change", loadProducts));
+byId("assistant-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const response = await fetch("/api/assistant/query", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({message: byId("assistant-message").value, product_id: null, comparison_product_ids: [], listing_id: null, page_context: "home"})});
+    const data = await response.json();
+    byId("assistant-response").textContent = data.answer || data.error?.message;
+});
+
+async function loadNotifications() {
+    const data = await (await fetch("/api/notifications")).json();
+    byId("notification-count").textContent = String(data.unread_count);
+    const root = byId("notification-list");
+    root.replaceChildren();
+    data.notifications.forEach(item => {
+        const row = text("article", "");
+        row.append(text("strong", item.title), text("p", item.message));
+        const read = text("button", item.read ? "Letta" : "Segna come letta");
+        const dismiss = text("button", "Ignora");
+        read.type = dismiss.type = "button";
+        read.disabled = item.read;
+        read.addEventListener("click", () => notificationMutation(item, "read"));
+        dismiss.addEventListener("click", () => notificationMutation(item, "dismiss"));
+        row.append(read, dismiss);
+        root.append(row);
+    });
+}
+
+async function notificationMutation(item, action) {
+    await fetch(`/api/notifications/${encodeURIComponent(item.notification_id)}/${action}`, {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+    await loadNotifications();
+}
+
+updateProductComparison();
+loadProducts();
+loadContext();
+loadNotifications();
