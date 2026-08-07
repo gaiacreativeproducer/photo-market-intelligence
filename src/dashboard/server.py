@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -131,8 +132,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--demo", action="store_true", help="use deterministic enriched fixtures")
     parser.add_argument("--port", type=int, default=8765)
     arguments = parser.parse_args(argv)
+    configured_runtime = os.environ.get("PMI_DATA_DIR")
+    user_directory = Path(configured_runtime).expanduser() if configured_runtime else None
     try:
-        server = create_server(arguments.port, arguments.demo)
+        server = create_server(arguments.port, arguments.demo, user_directory=user_directory)
     except (OSError, ValueError) as error:
         parser.error(str(error))
     host, port = server.server_address

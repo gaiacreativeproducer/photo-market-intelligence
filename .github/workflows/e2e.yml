@@ -1,0 +1,84 @@
+name: End-to-end QA
+
+on:
+  push:
+    branches:
+      - "feature/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.9"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install E2E dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Python tests
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Start isolated local dashboard
+        shell: bash
+        run: |
+          runtime_directory="${RUNNER_TEMP}/pmi-e2e-data"
+          mkdir -p "${runtime_directory}"
+          PMI_DATA_DIR="${runtime_directory}" python3 -m src.dashboard.server --demo --port 8765 >"${RUNNER_TEMP}/pmi-dashboard.log" 2>&1 &
+          echo $! >"${RUNNER_TEMP}/pmi-dashboard.pid"
+          for attempt in {1..100}; do
+            if curl --fail --silent http://127.0.0.1:8765/api/status >/dev/null; then
+              exit 0
+            fi
+            sleep 0.1
+          done
+          cat "${RUNNER_TEMP}/pmi-dashboard.log"
+          exit 1
+
+      - name: Run Playwright scenarios
+        env:
+          E2E_BASE_URL: http://127.0.0.1:8765
+        run: npm run e2e:direct
+
+      - name: Stop dashboard
+        if: always()
+        shell: bash
+        run: |
+          if test -f "${RUNNER_TEMP}/pmi-dashboard.pid"; then
+            kill "$(cat "${RUNNER_TEMP}/pmi-dashboard.pid")" 2>/dev/null || true
+          fi
+
+      - name: Upload Playwright HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report
+          path: playwright-report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-artifacts
+          path: |
+            test-results/
+            ${{ runner.temp }}/pmi-dashboard.log
+          if-no-files-found: ignore
+          retention-days: 14

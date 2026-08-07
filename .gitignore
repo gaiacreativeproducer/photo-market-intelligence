@@ -13,6 +13,11 @@ htmlcov/
 Microsoft.VisualStudio.Services.VSIXPackage
 *.vsix
 
+# End-to-end test artifacts
+node_modules/
+playwright-report/
+test-results/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
