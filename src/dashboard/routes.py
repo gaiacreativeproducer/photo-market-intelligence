@@ -23,6 +23,7 @@ STATIC_ROUTES = {
     "/compare.js": "compare.js", "/styles.css": "styles.css",
     "/assistant.css": "assistant.css",
     "/manual-listing.js": "manual-listing.js",
+    "/product-association.js": "product-association.js",
     "/manual-listing.css": "manual-listing.css",
 }
 SORTS = {"relevance", "brand", "newest", "used_price", "new_price", "confidence", "wishlist_priority"}
@@ -32,13 +33,15 @@ PRIORITY = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, None: 4}
 class DashboardRouter:
     def __init__(self, data: DashboardData, web_directory: Path,
                  notification_store=None, assistant_provider=None,
-                 manual_service=None, data_loader=None) -> None:
+                 manual_service=None, data_loader=None,
+                 association_service=None) -> None:
         self.data = data
         self.web_directory = web_directory
         self.notification_store = notification_store
         self.assistant_provider = assistant_provider
         self.manual_service = manual_service
         self.data_loader = data_loader
+        self.association_service = association_service
 
     def dispatch(self, raw_path: str) -> Tuple[int, str, bytes]:
         parsed = urlsplit(raw_path)
@@ -78,6 +81,41 @@ class DashboardRouter:
 
     def dispatch_post(self, raw_path: str, value: Dict[str, object]):
         path = unquote(urlsplit(raw_path).path)
+        association = re.fullmatch(r"/api/listings/([a-f0-9]{32})/product", path)
+        if association:
+            if set(value) != {"product_id"}:
+                return self.error(400, "invalid_body", "product_id is the only supported field.")
+            product_id = value["product_id"]
+            if product_id is not None and (
+                not isinstance(product_id, str)
+                or not re.fullmatch(r"[a-z0-9-]+", product_id)
+            ):
+                return self.error(400, "invalid_product_id", "product_id must be a catalog ID or null.")
+            try:
+                saved = self.association_service.assign(association.group(1), product_id)
+            except KeyError as error:
+                if error.args and error.args[0] == "listing":
+                    return self.error(404, "not_found", "Listing not found.")
+                return self.error(400, "unknown_product", "Product ID does not exist in the catalog.")
+            self._reload_data()
+            listing = next(
+                item for item in self.data.context.get("live_listings", [])
+                if item["listing_id"] == association.group(1)
+            )
+            workspace = self.data.details.get(listing.get("product_id"))
+            offer_count = workspace["workspace"].offer_count if workspace else 0
+            return self.json({
+                "listing_id": listing["listing_id"],
+                "product_id": listing.get("product_id"),
+                "product_name": listing.get("product_name"),
+                "product_url": listing.get("product_url"),
+                "needs_product_review": listing["state"]["needs_product_review"],
+                "automatic_recognition": listing["automatic_recognition"],
+                "manual_association": listing["manual_association"],
+                "active_offer_count": offer_count,
+                "comparison_available": offer_count >= 2,
+                "removed": saved is None,
+            })
         match = re.fullmatch(r"/api/notifications/([a-f0-9]{32})/(read|dismiss)", path)
         if match:
             if value:
@@ -109,10 +147,12 @@ class DashboardRouter:
                 if isinstance(error,ManualEntryError): return self.error(400,"invalid_listing",error.message,error.field)
                 return self.error(500,"manual_entry_failed","Manual listing could not be saved.")
             if self.data_loader:
-                self.data=self.data_loader();self.assistant_provider.data=self.data
+                self._reload_data()
                 live=next((item for item in self.data.context.get("live_listings",[]) if item["listing_id"]==result["listing_id"]),None)
                 detail=self.data.details.get(result.get("product_id"))
-                if live:result["listing_analysis"]=live.get("decision")
+                if live:
+                    result["listing_analysis"]=live.get("decision")
+                    result["association_listing"]=live
                 if detail:
                     workspace=detail.get("workspace")
                     result["market_context"]=detail.get("listing_market",{})
@@ -132,6 +172,12 @@ class DashboardRouter:
                     result["active_offer_count"]=0;result["comparison_available"]=False;result["actions"]={}
             return self.json(result,201 if result["status"]=="created" else 200)
         return self.error(HTTPStatus.NOT_FOUND, "not_found", "Route not found.")
+
+    def _reload_data(self):
+        if self.data_loader:
+            self.data = self.data_loader()
+            if self.assistant_provider:
+                self.assistant_provider.data = self.data
 
     def live_listings(self,query):
         allowed={"product_id","source","country","segment","active","review","price_min","price_max"};problem=self._validate_query(query,allowed)

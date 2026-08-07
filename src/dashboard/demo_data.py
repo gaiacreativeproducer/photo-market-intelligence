@@ -20,6 +20,7 @@ from ownership.models import (
 )
 from radar.persistence import RadarStore
 from .product_workspace import ProductWorkspaceBuilder
+from .product_associations import ManualProductAssignmentStore
 
 from .view_models import DashboardData, ProductView
 
@@ -202,7 +203,8 @@ def _add_radar_data(
 ) -> DashboardData:
     """Compose product workspaces and the global inbox from one listing index."""
     all_listings = store.load_listings()
-    builder = ProductWorkspaceBuilder(products, all_listings, aliases)
+    assignments = ManualProductAssignmentStore(store.directory).load()
+    builder = ProductWorkspaceBuilder(products, all_listings, aliases, assignments)
     product_by_id = {item.id: item for item in products}
     for product_id, detail in data.details.items():
         analysis = builder.analysis.get(product_id, {})

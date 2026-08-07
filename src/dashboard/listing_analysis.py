@@ -24,12 +24,20 @@ ACCEPTED_RECOGNITION_CONFIDENCE = 70
 
 
 def analyze_listings(
-    products: Sequence[Product], listings: Sequence[RadarListing]
+    products: Sequence[Product], listings: Sequence[RadarListing],
+    manually_assigned_listing_ids: Sequence[str] = (),
 ) -> Dict[str, Dict[str, object]]:
     """Return dashboard-safe analysis grouped by product ID."""
     products_by_id = {product.id: product for product in products}
     active = [listing for listing in listings if listing.active]
-    review = {listing.listing_id: needs_review(listing, products_by_id) for listing in listings}
+    manual = set(manually_assigned_listing_ids)
+    review = {
+        listing.listing_id: (
+            requires_structural_review(listing)
+            if listing.listing_id in manual else needs_review(listing, products_by_id)
+        )
+        for listing in listings
+    }
     connector_listings = {listing.listing_id: _connector_listing(listing) for listing in listings}
     result: Dict[str, Dict[str, object]] = {}
     for product_id in sorted({item.product_id for item in active if item.product_id}):
@@ -81,9 +89,13 @@ def needs_review(
         not listing.product_id
         or listing.product_id not in products_by_id
         or listing.recognition_confidence < ACCEPTED_RECOGNITION_CONFIDENCE
-        or _contradictory(listing)
-        or _invalid_defects(listing)
+        or requires_structural_review(listing)
     )
+
+
+def requires_structural_review(listing: RadarListing) -> bool:
+    """Return review state that a manual product assignment cannot override."""
+    return _contradictory(listing) or _invalid_defects(listing)
 
 
 def listing_view(

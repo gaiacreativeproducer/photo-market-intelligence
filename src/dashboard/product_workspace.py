@@ -9,7 +9,10 @@ from catalog import Product, ProductAlias
 from knowledge import ProductMatcher
 from radar.models import RadarListing
 
-from .listing_analysis import analyze_listings, listing_view, needs_review
+from .listing_analysis import (
+    analyze_listings, listing_view, needs_review, requires_structural_review,
+)
+from .product_associations import ManualProductAssignment
 from .view_models import ListingStateView, ProductView, ProductWorkspace
 
 
@@ -19,40 +22,65 @@ class ProductWorkspaceBuilder:
     def __init__(
         self, products: Sequence[Product], listings: Sequence[RadarListing],
         aliases: Sequence[ProductAlias] = (),
+        assignments: Optional[Mapping[str, ManualProductAssignment]] = None,
     ) -> None:
         self.products = list(products)
         matcher = ProductMatcher(products, aliases) if aliases else None
-        self.listings = [self._resolved(item, matcher) for item in listings]
         self.products_by_id = {item.id: item for item in products}
-        self.analysis = analyze_listings(products, self.listings)
+        self.assignments = dict(assignments or {})
+        self._automatic: Dict[str, Dict[str, object]] = {}
+        self.listings = []
+        for item in listings:
+            automatic, metadata = self._automatic_listing(item, matcher)
+            self._automatic[item.listing_id] = metadata
+            assignment = self.assignments.get(item.listing_id)
+            effective = replace(automatic, product_id=assignment.product_id) if assignment else automatic
+            self.listings.append(effective)
+        self.analysis = analyze_listings(
+            products, self.listings, list(self.assignments)
+        )
         self._active_by_product: Dict[str, List[RadarListing]] = {}
         for listing in self.listings:
-            if listing.active and not needs_review(listing, self.products_by_id):
+            if listing.active and not self._needs_review(listing):
                 self._active_by_product.setdefault(listing.product_id, []).append(listing)
         for values in self._active_by_product.values():
             values.sort(key=lambda item: (item.last_seen_at, item.listing_id), reverse=True)
 
-    @staticmethod
-    def _resolved(
+    def _automatic_listing(
+        self,
         listing: RadarListing, matcher: Optional[ProductMatcher]
-    ) -> RadarListing:
-        """Derive a safe product link for legacy unresolved rows without migration."""
-        if listing.product_id or matcher is None:
-            return listing
-        result = matcher.recognize(listing.title, listing.description)
-        if not result.product_id or result.confidence < 70 or result.ambiguous:
-            return listing
-        return replace(
-            listing, product_id=result.product_id,
-            recognition_confidence=result.confidence,
-        )
+    ):
+        """Derive legacy automatic identity while retaining recognition provenance."""
+        result = matcher.recognize(listing.title, listing.description) if matcher else None
+        automatic_id = listing.product_id
+        if (
+            not automatic_id and result is not None and result.product_id
+            and result.confidence >= 70 and not result.ambiguous
+        ):
+            automatic_id = result.product_id
+        effective = replace(listing, product_id=automatic_id) if automatic_id else listing
+        candidates = []
+        if result is not None:
+            for candidate in result.candidates[:5]:
+                product = self.products_by_id.get(candidate.product_id)
+                if product:
+                    candidates.append(self._candidate(product, candidate.score))
+        product = self.products_by_id.get(automatic_id)
+        metadata = {
+            "product_id": automatic_id or None,
+            "product_name": self._product_name(product),
+            "confidence": listing.recognition_confidence,
+            "ambiguous": bool(result.ambiguous) if result is not None else not bool(automatic_id),
+            "candidates": candidates,
+        }
+        return effective, metadata
 
     def active_listings_for_product(self, product_id: str) -> List[RadarListing]:
         """Return the canonical active, accepted offer collection for a product."""
         return list(self._active_by_product.get(product_id, ()))
 
     def listing_state(self, listing: RadarListing) -> ListingStateView:
-        review = needs_review(listing, self.products_by_id)
+        review = self._needs_review(listing)
         product_analysis = self.analysis.get(listing.product_id, {})
         decision = product_analysis.get("decisions", {}).get(listing.listing_id)
         market = product_analysis.get("market", {})
@@ -82,7 +110,7 @@ class ProductWorkspaceBuilder:
             self.listings, key=lambda item: (item.last_seen_at, item.listing_id), reverse=True
         ):
             view = listing_view(listing, self.products_by_id, self.analysis)
-            view["state"] = self._state_json(self.listing_state(listing))
+            self._enrich_listing_view(view, listing)
             view["product_url"] = (
                 f"/product.html?id={listing.product_id}" if not view["needs_review"] else None
             )
@@ -98,7 +126,7 @@ class ProductWorkspaceBuilder:
         offers = []
         for listing in listings:
             offer = listing_view(listing, self.products_by_id, self.analysis)
-            offer["state"] = self._state_json(self.listing_state(listing))
+            self._enrich_listing_view(offer, listing)
             offer["missing_information"] = list(listing.missing_information)
             offer["missing_information_count"] = len(listing.missing_information)
             offer["condition"] = listing.condition or listing.segment
@@ -161,4 +189,44 @@ class ProductWorkspaceBuilder:
             "has_missing_information": value.has_missing_information,
             "has_contradictions": value.has_contradictions,
             "is_active": value.is_active,
+        }
+
+    def _enrich_listing_view(
+        self, view: Dict[str, object], listing: RadarListing
+    ) -> None:
+        assignment = self.assignments.get(listing.listing_id)
+        state = self.listing_state(listing)
+        view["state"] = self._state_json(state)
+        view["needs_review"] = state.needs_product_review
+        view["analysis_status"] = state.lifecycle
+        view["automatic_recognition"] = self._automatic[listing.listing_id]
+        view["manual_association"] = ({
+            "product_id": assignment.product_id,
+            "product_name": self._product_name(self.products_by_id.get(assignment.product_id)),
+            "assigned_at": assignment.manual_assignment_at.isoformat(),
+            "source": assignment.manual_assignment_source,
+        } if assignment else None)
+
+    def _needs_review(self, listing: RadarListing) -> bool:
+        if listing.listing_id in self.assignments:
+            return requires_structural_review(listing)
+        return needs_review(listing, self.products_by_id)
+
+    @staticmethod
+    def _product_name(product: Optional[Product]) -> Optional[str]:
+        if product is None:
+            return None
+        return " ".join(value for value in (product.brand, product.model, product.version) if value)
+
+    @staticmethod
+    def _candidate(product: Product, confidence: int) -> Dict[str, object]:
+        return {
+            "product_id": product.id,
+            "display_name": ProductWorkspaceBuilder._product_name(product),
+            "brand": product.brand,
+            "model": product.model,
+            "version": product.version,
+            "category": product.category,
+            "mount": product.native_mount,
+            "confidence": confidence,
         }

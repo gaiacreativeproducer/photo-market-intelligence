@@ -138,8 +138,22 @@ function inboxCard(item) {
         product.href = item.product_url;
         row.append(product);
     }
+    const associate = text("button", item.needs_review ? "Associa prodotto" : "Cambia prodotto associato");
+    associate.type = "button";
+    associate.addEventListener("click", () => openProductAssociation(item, async () => {
+        await loadContext();
+        await loadProducts();
+        await openDataView("live");
+    }));
+    row.append(associate);
     const original = externalLink(item.url);
     if (original) row.append(original);
+    const technical = document.createElement("details");
+    technical.append(text("summary", "Dettagli tecnici"));
+    const automatic = item.automatic_recognition;
+    technical.append(text("p", `Riconoscimento automatico: ${automatic?.product_name || "non conclusivo"} — ${automatic?.confidence ?? item.recognition_confidence}%`));
+    technical.append(text("p", item.manual_association ? `Associazione manuale: ${item.manual_association.product_name} — selezionata dall’utente` : "Associazione manuale: nessuna"));
+    row.append(technical);
     return row;
 }
 

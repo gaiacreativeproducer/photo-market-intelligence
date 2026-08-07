@@ -48,6 +48,17 @@ function renderSuccess(data) {
     resultRow("Offerte attive per il prodotto", data.active_offer_count);
     resultRow("Confronto offerte", data.comparison_available ? "Disponibile" : "Aggiungi un’altra offerta per confrontare");
     if (data.plausible_candidates.length) resultRow("Prodotti possibili", data.plausible_candidates.map(item => item.name).join(", "));
+    if (data.association_listing?.needs_review) {
+        const associate = document.createElement("button");
+        associate.type = "button";
+        associate.textContent = "Associa prodotto";
+        associate.addEventListener("click", () => openProductAssociation(data.association_listing, result => {
+            resultRow("Associazione", `Annuncio associato a ${result.product_name}`);
+            actionLink("Apri prodotto", result.product_url, true);
+            if (result.comparison_available) actionLink("Confronta offerte", `${result.product_url}&offers=${result.listing_id}#confronta`, true);
+        }));
+        manualResult.append(associate);
+    }
     actionLink("Apri prodotto", data.actions?.open_product, true);
     actionLink("Confronta offerte", data.actions?.compare_offers, data.comparison_available);
     actionLink("Analizza dettagli", data.actions?.analyze_details);

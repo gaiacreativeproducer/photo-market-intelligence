@@ -70,10 +70,21 @@ function offerCard(item, workspace) {
         renderOfferComparison(workspace);
     });
     compareLabel.append(checkbox, document.createTextNode(" Confronta"));
-    actions.append(analyze, compareLabel);
+    const associate = node("button", "Cambia prodotto associato");
+    associate.type = "button";
+    associate.addEventListener("click", () => openProductAssociation(item, data => {
+        if (data.product_url && data.product_id !== productId) location.href = data.product_url;
+        else location.reload();
+    }));
+    actions.append(analyze, compareLabel, associate);
     const original = safeLink(item);
     if (original) actions.append(original);
     card.append(actions);
+    const technical = document.createElement("details");
+    technical.append(node("summary", "Dettagli tecnici"));
+    technical.append(node("p", `Riconoscimento automatico: ${item.automatic_recognition?.product_name || "non conclusivo"} — ${item.automatic_recognition?.confidence ?? item.recognition_confidence}%`));
+    technical.append(node("p", item.manual_association ? `Associazione manuale: ${item.manual_association.product_name} — selezionata dall’utente` : "Associazione manuale: nessuna"));
+    card.append(technical);
     return card;
 }
 

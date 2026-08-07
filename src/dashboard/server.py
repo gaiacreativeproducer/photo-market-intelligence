@@ -23,6 +23,9 @@ from radar.manual_entry import ManualListingService
 from radar.pipeline import RadarPipeline
 from radar.persistence import RadarStore
 from dashboard.demo_data import _catalog
+from dashboard.product_associations import (
+    ManualProductAssociationService, ManualProductAssignmentStore,
+)
 
 
 HOST = "127.0.0.1"
@@ -112,7 +115,13 @@ def create_server(
     assistant = DeterministicAssistantProvider(data, runtime, preferences.assistant_history_enabled)
     products,aliases=_catalog(root)
     manual_service=ManualListingService(RadarPipeline(RadarStore(runtime),products,aliases,user_directory=runtime))
-    router = DashboardRouter(data, root / "web", notification_store, assistant,manual_service,data_loader)
+    association_service=ManualProductAssociationService(
+        ManualProductAssignmentStore(runtime), RadarStore(runtime), products
+    )
+    router = DashboardRouter(
+        data, root / "web", notification_store, assistant, manual_service,
+        data_loader, association_service,
+    )
     server=DashboardHTTPServer((HOST, port), router);server.temporary_runtime=temporary
     return server
 

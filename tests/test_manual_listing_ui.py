@@ -174,6 +174,86 @@ class ManualApiTests(unittest.TestCase):
         canonical=self.request("/api/listings?review=true")[2]
         self.assertEqual(canonical,self.request("/api/listings/live?review=true")[2])
         self.assertTrue(all(item["needs_review"] for item in canonical["items"]))
+
+    def test_manual_product_assignment_change_and_removal(self):
+        ambiguous=payload(
+            url="https://example.test/manual-association-ambiguous",
+            title="Sony A7 IV e Sony A7 III",
+            description="Due corpi macchina venduti insieme.",
+            price=1200,
+        )
+        created=self.request("/api/listings/manual","POST",ambiguous,{"Content-Type":"application/json"})[2]
+        self.assertEqual(created["status"],"needs_review")
+        listing_id=created["listing_id"]
+        stored_before=next(item for item in self.server.router.manual_service.pipeline.store.load_listings() if item.listing_id==listing_id)
+        path=f"/api/listings/{listing_id}/product"
+        assigned=self.request(path,"POST",{"product_id":"sony-alpha-a7-iv"},{"Content-Type":"application/json"})
+        self.assertEqual(assigned[0],200)
+        value=assigned[2]
+        self.assertFalse(value["needs_product_review"])
+        self.assertEqual(value["product_id"],"sony-alpha-a7-iv")
+        self.assertEqual(value["manual_association"]["source"],"USER")
+        self.assertTrue(value["automatic_recognition"]["ambiguous"])
+        self.assertEqual(value["automatic_recognition"]["confidence"],created["recognition_confidence"])
+        review=self.request("/api/listings?review=true")[2]["items"]
+        self.assertNotIn(listing_id,{item["listing_id"] for item in review})
+        detail=self.request("/api/products/sony-alpha-a7-iv")[2]
+        self.assertIn(listing_id,{item["listing_id"] for item in detail["workspace"]["active_offers"]})
+        self.assertIn(listing_id,detail["workspace"]["listing_analyses"])
+        changed=self.request(path,"POST",{"product_id":"nikon-z6-iii"},{"Content-Type":"application/json"})[2]
+        self.assertEqual(changed["product_id"],"nikon-z6-iii")
+        self.assertNotIn(listing_id,self.request("/api/products/sony-alpha-a7-iv")[2]["workspace"]["listing_analyses"])
+        self.assertIn(listing_id,self.request("/api/products/nikon-z6-iii")[2]["workspace"]["listing_analyses"])
+        removed=self.request(path,"POST",{"product_id":None},{"Content-Type":"application/json"})[2]
+        self.assertTrue(removed["removed"])
+        self.assertTrue(removed["needs_product_review"])
+        self.assertIsNone(removed["manual_association"])
+        stored_after=next(item for item in self.server.router.manual_service.pipeline.store.load_listings() if item.listing_id==listing_id)
+        self.assertEqual(stored_after.listing_id,stored_before.listing_id)
+        self.assertEqual(stored_after.first_seen_at,stored_before.first_seen_at)
+        self.assertEqual(stored_after.product_id,stored_before.product_id)
+        self.assertIn(listing_id,{item["listing_id"] for item in self.request("/api/listings?review=true")[2]["items"]})
+
+    def test_manual_assignment_overrides_but_preserves_automatic_recognition(self):
+        created=self.request("/api/listings/manual","POST",payload(
+            url="https://example.test/manual-association-recognized",
+            title="Sony A7 IV usata",
+            description="Buone condizioni, 10000 scatti.",
+        ),{"Content-Type":"application/json"})[2]
+        listing_id=created["listing_id"]
+        path=f"/api/listings/{listing_id}/product"
+        value=self.request(path,"POST",{"product_id":"nikon-z6-iii"},{"Content-Type":"application/json"})[2]
+        self.assertEqual(value["product_id"],"nikon-z6-iii")
+        self.assertEqual(value["automatic_recognition"]["product_id"],"sony-alpha-a7-iv")
+        self.assertEqual(value["automatic_recognition"]["confidence"],created["recognition_confidence"])
+        fallback=self.request(path,"POST",{"product_id":None},{"Content-Type":"application/json"})[2]
+        self.assertEqual(fallback["product_id"],"sony-alpha-a7-iv")
+        self.assertFalse(fallback["needs_product_review"])
+
+    def test_manual_assignment_rejects_invalid_requests(self):
+        created=self.request("/api/listings/manual","POST",payload(
+            url="https://example.test/manual-association-invalid",
+            title="Camera sconosciuta",
+        ),{"Content-Type":"application/json"})[2]
+        path=f'/api/listings/{created["listing_id"]}/product'
+        self.assertEqual(self.request(path,"POST",{"product_id":"not-a-product"},{"Content-Type":"application/json"})[0],400)
+        self.assertEqual(self.request(path,"POST",{"product_id":42},{"Content-Type":"application/json"})[0],400)
+        self.assertEqual(self.request(path,"POST",{"product_id":None,"extra":1},{"Content-Type":"application/json"})[0],400)
+        self.assertEqual(self.request(path,"POST",{"product_id":None},{"Content-Type":"text/plain"})[0],415)
+        self.assertEqual(self.request(path,"POST",{"product_id":None},{"Content-Type":"application/json","Origin":"null"})[0],403)
+
+    def test_low_confidence_listing_can_be_manually_assigned(self):
+        created=self.request("/api/listings/manual","POST",payload(
+            url="https://example.test/manual-association-low-confidence",
+            title="Fotocamera usata",
+            description="Condizioni buone.",
+        ),{"Content-Type":"application/json"})[2]
+        self.assertLess(created["recognition_confidence"],70)
+        value=self.request(f'/api/listings/{created["listing_id"]}/product',"POST",
+            {"product_id":"sony-alpha-a7-iv"},{"Content-Type":"application/json"})[2]
+        self.assertEqual(value["product_id"],"sony-alpha-a7-iv")
+        self.assertFalse(value["needs_product_review"])
+        self.assertEqual(value["automatic_recognition"]["confidence"],created["recognition_confidence"])
         self.assertEqual(self.request("/api/listings/live?bad=x")[0],400);self.assertEqual(self.request("/api/listings/live?active=maybe")[0],400)
     def test_memory_endpoints_are_allowlisted_and_empty(self):
         for endpoint in ("wishlist","inventory","decisions"):
@@ -188,11 +268,14 @@ class ManualApiTests(unittest.TestCase):
             urlopen(huge)
         self.assertEqual(caught.exception.code,413)
     def test_ui_accessibility_and_safe_rendering(self):
-        html=(ROOT/"web/index.html").read_text();script=(ROOT/"web/manual-listing.js").read_text()+(ROOT/"web/app.js").read_text()
+        html=(ROOT/"web/index.html").read_text();script=(ROOT/"web/manual-listing.js").read_text()+(ROOT/"web/app.js").read_text()+(ROOT/"web/product-association.js").read_text()
         self.assertIn("Aggiungi annuncio",html);self.assertIn('id="manual-panel" class="side-panel" hidden',html)
         self.assertGreaterEqual(html.count("data-view="),9);self.assertIn(".focus()",script);self.assertNotIn("innerHTML",script);self.assertIn("textContent",script)
         self.assertIn('"product_id","Product ID"',script);self.assertIn('select.name="active"',script);self.assertIn("Apply filters",script)
         self.assertIn("Non ci sono ancora dati di mercato reali",html)
+        self.assertIn("Associa prodotto",html);self.assertIn("Cambia prodotto associato",script)
+        self.assertIn("Riconoscimento automatico",script);self.assertIn("Associazione manuale",script)
+        self.assertIn("/api/search?q=",script);self.assertIn("product_id: productId",script)
     def test_python_39(self):
         ast.parse((ROOT/"src/radar/manual_entry.py").read_text(),feature_version=(3,9))
         ast.parse((ROOT/"src/dashboard/listing_analysis.py").read_text(),feature_version=(3,9))
